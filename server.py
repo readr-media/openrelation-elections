@@ -9,7 +9,7 @@ from referendum import parse_cec_referendum, gen_referendum
 from mayor import gen_mayor, parse_cec_mayor, parse_tv_sht, gen_tv_mayor
 from councilMember import gen_councilMember, parse_cec_council
 from election import factcheck_data, election2024, politics_dump, legislator_dump
-from data_export import president2024_realtime
+from data_export import president2024_realtime, recall202507_realtime
 
 import data_handlers.helpers as hp
 import data_handlers.parser as parser
@@ -288,6 +288,12 @@ def dump_election_politics():
 def dump_landing():
     landing()
     return "done"
+
+
+@app.route("/recall202507_realtime", methods=['POST'])
+def recall202507_realtime_endpoint():
+    recall202507_realtime()
+    return "ok"
 
 
 @app.route("/")
