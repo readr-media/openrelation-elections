@@ -124,7 +124,7 @@ def recall202507_realtime():
                 votePop_map = json.load(f)
         # 先從 GCS 下載 recall.db
         sqlite_local = 'recall.db'
-        download_sqlite_from_gcs('statics-editools-prod', 'recall.db', sqlite_local)
+        download_sqlite_from_gcs('statics-editools-prod', '0727.db', sqlite_local)
         # 查詢 SQLite
         conn = sqlite3.connect(sqlite_local)
         cursor = conn.cursor()
