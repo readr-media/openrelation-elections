@@ -151,7 +151,6 @@ def recall202507_realtime():
             "result": result
         }
         json_str = json.dumps(data, ensure_ascii=False)
-        print(json_str)
         upload_data(
             'whoareyou-gcs.readr.tw',
             json_str.encode('utf8'),
