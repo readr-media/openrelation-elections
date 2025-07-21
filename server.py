@@ -290,7 +290,7 @@ def dump_landing():
     return "done"
 
 
-@app.route("/recall202507_realtime", methods=['POST'])
+@app.route("/recall202507_realtime", methods=['GET'])
 def recall202507_realtime_endpoint():
     recall202507_realtime()
     return "ok"
