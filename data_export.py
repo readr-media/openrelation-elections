@@ -157,7 +157,7 @@ def recall202507_realtime():
             'application/json',
             'json/202507_recall_iframe.json'
         )
-        print('上傳 recall.db 產生的 202507_recall_iframe.json 成功')
+        print('upload recall_iframe.json successfully')
 
 def presindent2024_cec( summary, phase = 1 ):
     tks = []
