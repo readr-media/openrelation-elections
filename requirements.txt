@@ -13,3 +13,4 @@ google-cloud-storage==1.44.0
 google-cloud-core==2.2.2
 google-cloud-datastore==2.9.0
 python-dateutil==2.8.2
+numpy==1.26.3
