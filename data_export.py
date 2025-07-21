@@ -277,10 +277,9 @@ def download_votePop_from_gcs(bucket_name, blob_name, local_path):
     return False
 
 def upload_votePop_to_gcs(bucket_name, blob_name, local_path):
-    storage_client = storage.Client()
-    bucket = storage_client.bucket(bucket_name)
-    blob = bucket.blob(blob_name)
-    blob.upload_from_filename(local_path)
+    from tools.uploadGCS import upload_blob
+    # 將 local_path 上傳到 GCS 的 blob_name 路徑，year 固定為 2025
+    upload_blob(local_path, 2025)
 
 def download_sqlite_from_gcs(bucket_name, blob_name, local_path):
     storage_client = storage.Client()
