@@ -7,7 +7,7 @@ ENV MNT_DIR /usr/src/app/gcs
 RUN addgroup user && adduser -h /home/user -D user -G user -s /bin/sh
 
 RUN apt-get update \
-    && apt-get install -y gcc libc-dev libxslt-dev libxml2 libpq-dev python3.11-venv \
+    && apt-get install -y gcc libc-dev libxslt-dev libxml2 libpq-dev libsqlite3-dev python3.11-venv \
     && python3 -m venv venv \
     && . venv/bin/activate \
     && pip install --upgrade pip \

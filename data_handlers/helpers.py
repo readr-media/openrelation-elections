@@ -126,8 +126,12 @@ mapping_code_vill = open_file(path)
 path = os.path.join(root, 'mapping_president.json')
 mapping_president = open_file(path)
 
+### 投開票所的對照圖，應全面採用mapping_tbox的表(該表為pandas.DataFrame)
 path = os.path.join(root, 'mapping_tboxNo_vill.json')
 mapping_tboxno_vill = open_file(path)
+
+path = os.path.join(root, 'mapping_tbox.json')
+mapping_tbox = open_file(path)
 
 ### 立委相關的對照表
 path = os.path.join(root, 'mapping_mountain_cand.json')

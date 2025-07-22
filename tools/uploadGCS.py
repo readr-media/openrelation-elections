@@ -3,6 +3,7 @@ from datetime import datetime
 from configs import upload_configs
 import os
 import json
+import pandas as pd
 
 IS_TV =  os.environ['PROJECT'] == 'tv' 
 BUCKET = os.environ['BUCKET']

@@ -2,7 +2,7 @@ import copy
 import data_handlers.helpers as hp
 import data_handlers.templates as tp
 import data_handlers.parser as parser
-import data_handlers.legislator.converter as converter
+import data_handlers.map.converter as converter
 
 '''
     Generate constituency(區域立委)
@@ -73,6 +73,8 @@ def generate_constituency_town_json(preprocessing_data, is_running, is_started ,
     preprocessing_data = copy.deepcopy(preprocessing_data)
     updatedAt = preprocessing_data.get('updateAt','')
 
+    only_one_area = ['09007', '09020', '10002', '10014', '10015', '10016', '10017', '10018', '10020']
+
     ### 在每一個行政區(district)下有很多投票所，將這些資料進行整理計算並存到result
     for county_area_code, tbox_data in preprocessing_data['districts'].items():
         constituency_json = tp.ConstituencyTemplate(
@@ -85,55 +87,63 @@ def generate_constituency_town_json(preprocessing_data, is_running, is_started ,
         ### 當為全省(台灣省,福建省)資料和無地區資料時不處理
         county_code = county_area_code[:hp.COUNTY_CODE_LENGTH]
         area_code   = county_area_code[hp.COUNTY_CODE_LENGTH:]  
-        if county_code in hp.NO_PROCESSING_CODE or area_code == hp.DEFAULT_AREACODE:
+        if county_code in hp.NO_PROCESSING_CODE:
             continue
+        # 處理只有單一選區的縣市問題
+        if county_code in only_one_area:
+            area_code = '01'
+            county_area_code = county_code + area_code
+        else:
+            if area_code == hp.DEFAULT_AREACODE:
+                continue
         
         ### 統計各開票所資料
         vill_calculator = {}
         for data in tbox_data:
             tboxNo         = data.get('tboxNo', hp.DEFAULT_INT)
             town_code      = data.get('deptCode', hp.DEFAULT_TOWNCODE)
-            area_code      = data.get('areaCode', hp.DEFAULT_AREACODE)
+            area_code      = area_code #data.get('areaCode', hp.DEFAULT_AREACODE)
             voterTurnout   = data.get('voterTurnout', hp.DEFAULT_INT)
             eligibleVoters = data.get('eligibleVoters', hp.DEFAULT_INT)
             if tboxNo == hp.DEFAULT_INT:
                 continue
             
-            vill_name = hp.mapping_tboxno_vill.get(county_code+town_code, {}).get(str(tboxNo), None)
-            vill_code = hp.mapping_vill_code.get(county_code+town_code, {}).get(vill_name, None)
-            if vill_code == None:
-                continue
-                
-            all_code = f'{county_code}{town_code}{vill_code}'
-            vill_calc = vill_calculator.get(all_code, None)
-            raw_candidates = data.get('candTksInfo', [])
-            if vill_calc == None:
-                town_name = hp.mapping_town[f'{county_code}{town_code}']
-                city_name = town_name[:3] ## TODO: Should refactor
-                region = f'{city_name} 第{area_code}選區 {town_name[3:]}{vill_name}'
-                area_nickname = hp.mapping_nickname[f'{county_code}{area_code}']
+            # 計算各村里的票數總和
+            vill_list = hp.mapping_tbox.get(county_code, {}).get(town_code, {}).get(str(tboxNo), [])
+            for vill_name in vill_list:
+                vill_code = hp.mapping_vill_code.get(county_code+town_code, {}).get(vill_name, None)
+                if vill_code == None:
+                    continue
+                    
+                all_code = f'{county_code}{town_code}{vill_code}'
+                vill_calc = vill_calculator.get(all_code, None)
+                raw_candidates = data.get('candTksInfo', [])
+                if vill_calc == None:
+                    town_name = hp.mapping_town[f'{county_code}{town_code}']
+                    city_name = town_name[:3] ## TODO: Should refactor
+                    region = f'{city_name} 第{area_code}選區 {town_name[3:]}{vill_name}'
+                    area_nickname = hp.mapping_nickname[f'{county_code}{area_code}']
 
-                vill_calc_json = tp.ConstituencyCalcTemplate(
-                    region         = region,
-                    county         = county_code,
-                    town           = town_code,
-                    area           = area_code,
-                    area_nickname = area_nickname,
-                    vill           = vill_code,
-                    voterTurnout   = voterTurnout,
-                    eligibleVoters = eligibleVoters
-                ).to_json()
-                vill_calc_json['candidates'] = converter.convert_constituency_candidate(raw_candidates, county_code, area_code)
-                for cand in vill_calc_json['candidates']:
-                    cand['candVictor'] = ' '
-                vill_calculator[all_code] = vill_calc_json
-            else:
-                vill_calc['voterTurnout']   += voterTurnout
-                vill_calc['eligibleVoters'] += eligibleVoters
-                candidates = converter.convert_constituency_candidate(raw_candidates, county_code, area_code)
-                for idx, cand in enumerate(vill_calc['candidates']):
-                    cand['tks'] += candidates[idx]['tks']
-        
+                    vill_calc_json = tp.ConstituencyCalcTemplate(
+                        region         = region,
+                        county         = county_code,
+                        town           = town_code,
+                        area           = area_code,
+                        area_nickname = area_nickname,
+                        vill           = vill_code,
+                        voterTurnout   = voterTurnout,
+                        eligibleVoters = eligibleVoters
+                    ).to_json()
+                    vill_calc_json['candidates'] = converter.convert_constituency_candidate(raw_candidates, county_code, area_code)
+                    for cand in vill_calc_json['candidates']:
+                        cand['candVictor'] = ' '
+                    vill_calculator[all_code] = vill_calc_json
+                else:
+                    vill_calc['voterTurnout']   += voterTurnout
+                    vill_calc['eligibleVoters'] += eligibleVoters
+                    candidates = converter.convert_constituency_candidate(raw_candidates, county_code, area_code)
+                    for idx, cand in enumerate(vill_calc['candidates']):
+                        cand['tks'] += candidates[idx]['tks']
         ### 彙整村里資料並存入ConstituencyDistrictTemplate
         for all_code, vill_calc in vill_calculator.items():
             region, county, town, vill, area = vill_calc['region'], vill_calc['county'], vill_calc['town'], vill_calc['vill'], vill_calc['area']
@@ -176,7 +186,7 @@ def generate_country_json(preprocessing_data, is_running, is_started , election_
         preprocessing_data - cec president data after preprocessing county
         is_running         - is_running file?
         is_started         - is_started?
-        election_type      - 'mountainIndigenous'/'plainIndigenous'/'party'
+        election_type      - 'mountainIndigenous'/'plainIndigenous'/'party'/'president'
         helper             - helper file which helps you map the name in raw cec
     Output:
         country_json - result
@@ -267,7 +277,6 @@ def generate_county_json(preprocessing_data, is_running, is_started, election_ty
                 county_code = county_code,
                 town = town_code,
                 profRate = town_data[0][helper['PROFRATE']]
-
             ).to_json()
             raw_candidates = town_data[0].get(helper['CANDIDATES'], [])
             district_tmp['candidates'] = converter.convert_candidate(raw_candidates, election_type)
@@ -298,7 +307,6 @@ def generate_town_json(town_data, updateAt, is_running, is_started, election_typ
         }
     '''
     result = {}
-
     county_code = town_data.get('county_code', None)
     if county_code == None or (county_code in hp.NO_PROCESSING_CODE):
         return None
@@ -322,37 +330,38 @@ def generate_town_json(town_data, updateAt, is_running, is_started, election_typ
             if tboxNo == hp.DEFAULT_INT:
                 continue
             
-            vill_name = hp.mapping_tboxno_vill.get(county_code+town_code, {}).get(str(tboxNo), None)
-            vill_code = hp.mapping_vill_code.get(county_code+town_code, {}).get(vill_name, None)
-            
-            all_code = f'{county_code}{town_code}{vill_code}'
-            vill_calc = vill_calculator.get(all_code, None)
-            if vill_calc == None:
-                region = hp.mapping_town.get(county_code+town_code, 'Unknown') + hp.mapping_vill.get(all_code, 'Unknown')
-                vill_calc_json = tp.VillCalcTemplate(
-                    region       = region,
-                    county       = county_code,
-                    town         = town_code,
-                    vill         = vill_code,
-                    voterTurnout   = voterTurnout,
-                    eligibleVoters = eligibleVoters
-                ).to_json()
-                raw_candidates = data.get('candTksInfo', [])
-                vill_calc_json['candidates'] = converter.convert_candidate(raw_candidates, election_type)
+            # 計算各村里的票數總和
+            vill_list = hp.mapping_tbox.get(county_code, {}).get(town_code, {}).get(str(tboxNo), [])
+            for vill_name in vill_list:
+                vill_code = hp.mapping_vill_code.get(county_code+town_code, {}).get(vill_name, None)
                 
-                ### 在不分區立委(party)當中不會有獲勝者的資料，不需要處理。其他的話由於需要在最後統算時才能得出winner所以要先設為空字串 
-                if election_type != 'party':
-                    for cand in vill_calc_json['candidates']:
-                        cand['candVictor'] = ' '
-                vill_calculator[all_code] = vill_calc_json
-            else:
-                vill_calc['voterTurnout']   += voterTurnout
-                vill_calc['eligibleVoters'] += eligibleVoters
-                
-                candidates = converter.convert_candidate(data.get('candTksInfo', []), election_type)
-                for idx, cand in enumerate(vill_calc['candidates']):
-                    cand['tks'] += candidates[idx]['tks']
-        
+                all_code = f'{county_code}{town_code}{vill_code}'
+                vill_calc = vill_calculator.get(all_code, None)
+                if vill_calc == None:
+                    region = hp.mapping_town.get(county_code+town_code, 'Unknown') + hp.mapping_vill.get(all_code, 'Unknown')
+                    vill_calc_json = tp.VillCalcTemplate(
+                        region       = region,
+                        county       = county_code,
+                        town         = town_code,
+                        vill         = vill_code,
+                        voterTurnout   = voterTurnout,
+                        eligibleVoters = eligibleVoters
+                    ).to_json()
+                    raw_candidates = data.get('candTksInfo', [])
+                    vill_calc_json['candidates'] = converter.convert_candidate(raw_candidates, election_type)
+                    
+                    ### 在不分區立委(party)當中不會有獲勝者的資料，不需要處理。其他的話由於需要在最後統算時才能得出winner所以要先設為空字串 
+                    if election_type != 'party':
+                        for cand in vill_calc_json['candidates']:
+                            cand['candVictor'] = ' '
+                    vill_calculator[all_code] = vill_calc_json
+                else:
+                    vill_calc['voterTurnout']   += voterTurnout
+                    vill_calc['eligibleVoters'] += eligibleVoters
+                    
+                    candidates = converter.convert_candidate(data.get('candTksInfo', []), election_type)
+                    for idx, cand in enumerate(vill_calc['candidates']):
+                        cand['tks'] += candidates[idx]['tks']
         for all_code, vill_calc in vill_calculator.items():
             region, county, town, vill = vill_calc['region'], vill_calc['county'], vill_calc['town'], vill_calc['vill']
             total_voterTurnout   = vill_calc.get('voterTurnout', hp.DEFAULT_INT)
@@ -406,7 +415,7 @@ def generate_map_country_seats(raw_data, helper=hp.helper):
         mapping_json = mapping_relationship[election_type]
         raw_candidates = election_data['candTksInfo']
         
-        ### Calculate the candidate
+        ### 計算當選名額
         calc_seats = {}
         whole_seats = helper[f'{election_type}-allseats']
         for candidate in raw_candidates:
@@ -416,12 +425,12 @@ def generate_map_country_seats(raw_data, helper=hp.helper):
                 continue
             addVictor = 1 if candidate.get('candVictor', ' ')=='*' else 0
             calc_victors += addVictor
-            label = candInfo.get('party', '無黨籍及未經政黨推薦')
+            label = candInfo.get('party', hp.INDEPENDENT_PARTY)
             if label == None:
-                label = '無黨籍及未經政黨推薦'
+                label = hp.INDEPENDENT_PARTY
             calc_seats[label] = calc_seats.get(label, 0) + addVictor
         
-        ### Store into template
+        ### 儲存席次表，並在排序後計算缺額
         seat_template = tp.SeatTemplate().to_json()
         for label, seats in calc_seats.items():
             if label==None:
@@ -429,6 +438,7 @@ def generate_map_country_seats(raw_data, helper=hp.helper):
             seat_checked = tp.SeatCandidateTemplate(label=label, seats=seats).to_json()
             seat_template['parties'].append(seat_checked)
             all_seats[label] = all_seats.get(label, 0) + seats
+        seat_template['parties'] = sorted(seat_template['parties'], key=lambda x: x['seats'], reverse=True)
         seat_unchecked = 0 if (whole_seats-calc_victors)<0 else (whole_seats-calc_victors)
         seat_unchecked_template = tp.SeatCandidateTemplate(label=hp.UNDETERMINED_INFO, seats=seat_unchecked).to_json()
         seat_template['parties'].append(seat_unchecked_template)
@@ -447,6 +457,7 @@ def generate_map_country_seats(raw_data, helper=hp.helper):
         seat_template['parties'].append(seat_checked)
         all_seats[label] = all_seats.get(label, 0) + seats
         calc_victors += seats
+    seat_template['parties'] = sorted(seat_template['parties'], key=lambda x: x['seats'], reverse=True)
     seat_unchecked = 0 if (whole_seats-calc_victors)<0 else (whole_seats-calc_victors)
     seat_unchecked_template = tp.SeatCandidateTemplate(label=hp.UNDETERMINED_INFO, seats=seat_unchecked).to_json()
     seat_template['parties'].append(seat_unchecked_template)
@@ -461,7 +472,7 @@ def generate_map_normal_seats(raw_data, helper=hp.helper):
     all_seats = {}
     parsed_county = parser.parse_county(raw_data, election_type='normal')
     for county_code, county_data in parsed_county['districts'].items():
-        ### calculate the winner number of each party for the county
+        ### 計算當選名額
         seat_template = tp.SeatTemplate().to_json()
         seat_table = {}
         only_one_area = True if len(county_data)==1 else False
@@ -475,9 +486,9 @@ def generate_map_normal_seats(raw_data, helper=hp.helper):
                 candNo    = candidate.get('candNo', hp.DEFAULT_INT)
                 is_winner = candidate.get('candVictor', False)==True or candidate.get('candVictor', ' ')=='*'
                 if is_winner==True:
-                    party = area_candidates.get(str(candNo), {}).get('party', '無黨籍及未經政黨推薦')
+                    party = area_candidates.get(str(candNo), {}).get('party', hp.INDEPENDENT_PARTY)
                     if party == None:
-                        party = '無黨籍及未經政黨推薦'
+                        party = hp.INDEPENDENT_PARTY
                     seat_table[party] = seat_table.get(party, 0) + 1
                     all_seats[party] = all_seats.get(party, 0) + 1
         seat_candidates_count = 0
@@ -485,6 +496,9 @@ def generate_map_normal_seats(raw_data, helper=hp.helper):
             seat_candidates_count += seats
             seat_cand = tp.SeatCandidateTemplate(label=party, seats=seats).to_json()
             seat_template['parties'].append(seat_cand)
+        seat_template['parties'] = sorted(seat_template['parties'], key=lambda x: x['seats'], reverse=True)
+        
+        ### 計算席次缺額: 在區域立委中，一個選區會對應到一個當選者，故county有多少名額根據底下有多少選區決定
         area_candidates_num =  len(hp.mapping_constituency_cand.get(county_code, {}))
         seat_cand = tp.SeatCandidateTemplate(label=hp.UNDETERMINED_INFO, seats=(area_candidates_num - seat_candidates_count)).to_json()
         seat_template['parties'].append(seat_cand)
@@ -511,6 +525,9 @@ def generate_map_all_seats(seats_country, seats_normal, helper=hp.helper):
     for label, seats in all_seats.items():
         seat_checked = tp.SeatCandidateTemplate(label=label, seats=seats).to_json()
         seat_template['parties'].append(seat_checked)
+    seat_template['parties'] = sorted(seat_template['parties'], key=lambda x: x['seats'], reverse=True)
+
+    ### 計算席次缺額
     seat_unchecked = 0 if (whole_seats-calc_seats)<0 else (whole_seats-calc_seats)
     seat_unchecked_template = tp.SeatCandidateTemplate(label=hp.UNDETERMINED_INFO, seats=seat_unchecked).to_json()
     seat_template['parties'].append(seat_unchecked_template)

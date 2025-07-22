@@ -7,6 +7,7 @@ from gql.transport.aiohttp import AIOHTTPTransport
 from gql import gql, Client
 from google.cloud import storage
 from datetime import datetime, timezone, timedelta
+import sqlite3
 
 def president2024_realtime():
     bucket = os.environ['BUCKET']
@@ -46,7 +47,7 @@ def president2024_realtime():
             readr_data["updateAt"] = cec_data["updateAt"]
         else:
             readr_data["updateAt"] = date_time
-            
+        
         # upload for pure cec data
         readr_data["title"] = "2024 總統大選即時開票"
         if "summary" in cec_data:
@@ -71,7 +72,7 @@ def president2024_realtime():
                 unit_tks['value'].append( { candidates[0][number][0:1]: row[number + 1].replace(",", "") })
                 #unit_tks[candidates[0][number]] = row[number]
             voting_data["result"].append(unit_tks)
-                
+            
         print("Getting data from sheet")
         if get_cec_data == 'T':
             for result in voting_data["result"]:
@@ -81,6 +82,86 @@ def president2024_realtime():
 
     upload_data(bucket, json.dumps(voting_data, ensure_ascii=False).encode('utf8'), 'application/json', "json/2024homepage.json")
     return "OK"
+
+def recall202507_realtime():
+    gc = pygsheets.authorize(service_account_env_var = 'GDRIVE_API_CREDENTIALS')
+    url = "https://docs.google.com/spreadsheets/d/1pri5X5k-_OGxOmRDQ10doKGxs9x4s3ZvU5YJ6D8YmLI/edit"
+    sht = gc.open_by_url(url)
+    try:
+        meta_sheet = sht.worksheet_by_title("官網切換相關")
+    except Exception as e:
+        print("Exception: {}".format(type(e).__name__))
+        print("Exception message: {}".format(e))
+        return
+    voting_data = { "result": [] }
+    voting_data['title'] = meta_sheet.get_value("B2")       
+    get_cec_data = meta_sheet.get_value("B3")
+    if get_cec_data == 'T':
+        cec_json = requests.get('https://whoareyou-gcs.readr.tw/elections-dev/2025_recall_election_data_final/iframe_data.json')
+        if cec_json.status_code == 200:
+            # 加入 source 欄位
+            cec_data = json.loads(cec_json.text)
+            cec_data['source'] = 'cec'
+            upload_data(
+                'whoareyou-gcs.readr.tw',
+                json.dumps(cec_data, ensure_ascii=False).encode('utf8'),
+                'application/json',
+                'json/202507_recall_iframe.json'
+            )
+            print('Upload 202507_recall_iframe.json successfully')
+        else:
+            print('Failed to get CEC data:', cec_json.status_code)
+    else:
+        votePop_local = 'votePop.json'
+        votePop_map = {}
+        # 只有本地沒有 votePop.json 時才去下載 iframe_data.json 來補
+        if not os.path.exists(votePop_local):
+            iframe_url = 'https://whoareyou-gcs.readr.tw/elections-dev/2025_recall_election_data_final/iframe_data.json'
+            iframe_data = requests.get(iframe_url).json()
+            for item in iframe_data['result']:
+                votePop_map[item['name']] = item['votePop']
+            with open(votePop_local, 'w', encoding='utf-8') as f:
+                json.dump(votePop_map, f, ensure_ascii=False, indent=2)
+        else:
+            with open(votePop_local, 'r', encoding='utf-8') as f:
+                votePop_map = json.load(f)
+        # 先從 GCS 下載 recall.db
+        sqlite_local = 'recall.db'
+        download_sqlite_from_gcs('statics-editools-prod', '0727.db', sqlite_local)
+        # 查詢 SQLite
+        conn = sqlite3.connect(sqlite_local)
+        cursor = conn.cursor()
+        cursor.execute('SELECT name, agreeTks, disagreeTks, ytpRate, adptVictor FROM A1')
+        rows = cursor.fetchall()
+        conn.close()
+        result = []
+        for row in rows:
+            name = row[0]
+            votePop = votePop_map.get(name, 0)
+            result.append({
+                "name": name,
+                "votePop": votePop,
+                "agreeTks": int(row[1]),
+                "disagreeTks": int(row[2]),
+                "ytpRate": float(row[3]),
+                "adptVictor": row[4]
+            })
+        tz = timezone(timedelta(hours=+8))
+        now = datetime.now(tz)
+        date_time = now.strftime("%Y-%m-%d %H:%M:%S")
+        data = {
+            "updatedAt": date_time,
+            "result": result,
+            "source": "mnews"
+        }
+        json_str = json.dumps(data, ensure_ascii=False)
+        upload_data(
+            'whoareyou-gcs.readr.tw',
+            json_str.encode('utf8'),
+            'application/json',
+            'json/202507_recall_iframe.json'
+        )
+        print('Upload recall_iframe.json successfully')
 
 def presindent2024_cec( summary, phase = 1 ):
     tks = []
@@ -188,6 +269,26 @@ def upload_data(bucket_name: str, data: str, content_type: str, destination_blob
     blob.content_language = 'zh'
     blob.cache_control = 'max-age=30,public'
     blob.patch()
+
+def download_votePop_from_gcs(bucket_name, blob_name, local_path):
+    storage_client = storage.Client()
+    bucket = storage_client.bucket(bucket_name)
+    blob = bucket.blob(blob_name)
+    if blob.exists():
+        blob.download_to_filename(local_path)
+        return True
+    return False
+
+def upload_votePop_to_gcs(bucket_name, blob_name, local_path):
+    from tools.uploadGCS import upload_blob
+    # 將 local_path 上傳到 GCS 的 blob_name 路徑，year 固定為 2025
+    upload_blob(local_path, 2025)
+
+def download_sqlite_from_gcs(bucket_name, blob_name, local_path):
+    storage_client = storage.Client()
+    bucket = storage_client.bucket(bucket_name)
+    blob = bucket.blob(blob_name)
+    blob.download_to_filename(local_path)
 
 if __name__ == "__main__":  
     gql_string = """
