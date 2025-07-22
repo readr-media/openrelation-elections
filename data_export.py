@@ -99,15 +99,18 @@ def recall202507_realtime():
     if get_cec_data == 'T':
         cec_json = requests.get('https://whoareyou-gcs.readr.tw/elections-dev/2025_recall_election_data_final/iframe_data.json')
         if cec_json.status_code == 200:
+            # 加入 source 欄位
+            cec_data = json.loads(cec_json.text)
+            cec_data['source'] = 'cec'
             upload_data(
                 'whoareyou-gcs.readr.tw',
-                cec_json.text.encode('utf8'),
+                json.dumps(cec_data, ensure_ascii=False).encode('utf8'),
                 'application/json',
                 'json/202507_recall_iframe.json'
             )
-            print('上傳 202507_recall_iframe.json 成功')
+            print('Upload 202507_recall_iframe.json successfully')
         else:
-            print('取得 CEC 資料失敗:', cec_json.status_code)
+            print('Failed to get CEC data:', cec_json.status_code)
     else:
         votePop_local = 'votePop.json'
         votePop_map = {}
@@ -148,7 +151,8 @@ def recall202507_realtime():
         date_time = now.strftime("%Y-%m-%d %H:%M:%S")
         data = {
             "updatedAt": date_time,
-            "result": result
+            "result": result,
+            "source": "mnews"
         }
         json_str = json.dumps(data, ensure_ascii=False)
         upload_data(
@@ -157,7 +161,7 @@ def recall202507_realtime():
             'application/json',
             'json/202507_recall_iframe.json'
         )
-        print('upload recall_iframe.json successfully')
+        print('Upload recall_iframe.json successfully')
 
 def presindent2024_cec( summary, phase = 1 ):
     tks = []
