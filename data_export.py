@@ -8,6 +8,7 @@ from gql import gql, Client
 from google.cloud import storage
 from datetime import datetime, timezone, timedelta
 import sqlite3
+from tools.cec_data import request_cec
 
 def president2024_realtime():
     bucket = os.environ['BUCKET']
@@ -159,6 +160,87 @@ def recall202507_realtime():
             'json/202507_recall_iframe.json'
         )
         print('上傳 recall.db 產生的 202507_recall_iframe.json 成功')
+
+def load_recall_mapping():
+    recallno_mapping_json = requests.get('https://whoareyou-gcs.readr.tw/elections-dev/candNo-mapping/202507_recallno_mapping.json')
+    return recallno_mapping_json.json()
+
+def get_templates(base_url, recall_mapping):
+    def fetch_constituency():
+        for country, areas in recall_mapping.items():
+            for item in areas:
+                area = item['area']
+                if area == 'NA':
+                    continue
+                constituency = f'{country}{area}'
+                url = base_url.format('constituency', constituency)
+                yield country, area, requests.get(url).json()
+    def fetch_country():
+        url = base_url.format('country', 'country')
+        return 'country', requests.get(url).json()
+    def fetch_county():
+        for county in recall_mapping.keys():
+            url = base_url.format('county', county)
+            yield county, requests.get(url).json()
+    return list(fetch_constituency()), fetch_country(), list(fetch_county())
+
+def parse_202507_constituency_data(template, input_data):
+    districts = []
+    for district in template['districts']:
+        deptCode = district['town']
+        tboxNo = district['vill']
+        data = None if input_data is None or deptCode not in input_data or tboxNo not in input_data[deptCode] else input_data[deptCode][tboxNo]
+        district_data = {
+            'range': district['range'],
+            'area_nickname': district['area_nickname'],
+            'county': district['county'],
+            'area': district['area'],
+            'town': district['town'],
+            'vill': district['vill'],
+            'type': district['type'],
+            'profRate': 0.0 if data is None else data['profRate'],
+            'profTks': 0 if data is None else data['gmeb'],
+            'candidates': [
+                {
+                    'candNo': candidate['candNo'],
+                    'name': candidate['name'],
+                    'party': candidate['party'],
+                    'agreeTks': 0 if data is None else data['agreeTks'],
+                    'disagreeTks': 0 if data is None else data['disagreeTks'],
+                    'agreeRate': 0.0 if data is None else data['agreeRate'],
+                    'disagreeRate': 0.0 if data is None else data['disagreeRate'],
+                    'adptVictor': '' if data is None else data['adptVictor'],
+                    'ytpRate': 0.0 if data is None else data['ytpRate'],
+                    'ntpRate': 0.0 if data is None else round(data['disagreeTks'] / data['gmeb'] * 100, 2)
+                }
+                for candidate in district['candidates']
+            ]
+        }
+        districts.append(district_data)
+    return districts
+
+def format_202507_timestamp(timestamp_str):
+    if not timestamp_str or len(timestamp_str) != 10:
+        return "2025-07-03 20:15:00"
+    
+    month = timestamp_str[:2]
+    day = timestamp_str[2:4] 
+    hour = timestamp_str[4:6]
+    minute = timestamp_str[6:8]
+    second = timestamp_str[8:10]
+    
+    return f"2025-{month}-{day} {hour}:{minute}:{second}"
+
+def get_202507_recall_data():
+    final_data = request_cec('final.json')
+    running_data = request_cec('running.json')
+    is_started = True if final_data or running_data else False
+    is_running = True if running_data and not final_data else False
+    
+    base_url = 'https://whoareyou-gcs.readr.tw/elections-dev/2025/legislator/map/{}/recall-july/{}.json'
+    recall_mapping = load_recall_mapping()
+    constituencies, countries, counties = get_templates(base_url, recall_mapping)
+
 
 def presindent2024_cec( summary, phase = 1 ):
     tks = []
