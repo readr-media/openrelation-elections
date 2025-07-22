@@ -8,7 +8,7 @@ from gql import gql, Client
 from google.cloud import storage
 from datetime import datetime, timezone, timedelta
 import sqlite3
-from tools.cec_data import request_cec
+# from tools.cec_data import request_cec
 
 def president2024_realtime():
     bucket = os.environ['BUCKET']
@@ -184,12 +184,12 @@ def get_templates(base_url, recall_mapping):
             yield county, requests.get(url).json()
     return list(fetch_constituency()), fetch_country(), list(fetch_county())
 
-def parse_202507_constituency_data(template, input_data):
+def parse_202507_constituency_data(template, cec_data):
     districts = []
     for district in template['districts']:
         deptCode = district['town']
         tboxNo = district['vill']
-        data = None if input_data is None or deptCode not in input_data or tboxNo not in input_data[deptCode] else input_data[deptCode][tboxNo]
+        data = None if cec_data is None or deptCode not in cec_data or tboxNo not in cec_data[deptCode] else cec_data[deptCode][tboxNo]
         district_data = {
             'range': district['range'],
             'area_nickname': district['area_nickname'],
@@ -231,6 +231,53 @@ def format_202507_timestamp(timestamp_str):
     
     return f"2025-{month}-{day} {hour}:{minute}:{second}"
 
+def find_candidate_no(recall_mapping, constituency_code, area_code):
+    candidate = 'A01'
+    
+    if constituency_code in recall_mapping:
+        for item in recall_mapping[constituency_code]:
+            if item['area'] == area_code:
+                candidate = item['no']
+                break
+    
+    return candidate
+
+def transform_cec_data_with_tbox_no(cec_data, candidate):
+    if cec_data is None:
+        return None
+    
+    data = {}
+    for vill_status in cec_data[candidate]:
+        dept_code = vill_status['deptCode']
+        tbox_no = vill_status['tboxNo']
+        
+        if dept_code not in data:
+            data[dept_code] = {}
+        
+        data[dept_code][tbox_no] = vill_status
+    
+    return data
+
+def process_constituency_data(constituencies, recall_mapping, is_started, is_running, final_data):
+    for constituency in constituencies:
+        cec_data = final_data if is_started & (not is_running) else None
+        updatedAt = constituency[1]['updatedAt'] if cec_data is None else format_202507_timestamp(cec_data['ST'])
+        # TODO: have bug...
+        cec_data = transform_cec_data_with_tbox_no(cec_data, find_candidate_no(recall_mapping, constituency[0], constituency[1]))
+        districts = parse_202507_constituency_data(constituency[2], cec_data)
+        data = {
+            'updatedAt': updatedAt,
+            'is_running': is_running,
+            'is_started': is_started,
+            'districts': districts
+        }
+        upload_data(
+            'whoareyou-gcs.readr.tw',
+            json.dumps(data, ensure_ascii=False).encode('utf8'),
+            'application/json',
+            f'elections-dev/2025/legislator/map/constituency/recall-july/{constituency[0]}{constituency[1]}.json'
+        )
+
 def get_202507_recall_data():
     final_data = request_cec('final.json')
     running_data = request_cec('running.json')
@@ -240,6 +287,8 @@ def get_202507_recall_data():
     base_url = 'https://whoareyou-gcs.readr.tw/elections-dev/2025/legislator/map/{}/recall-july/{}.json'
     recall_mapping = load_recall_mapping()
     constituencies, countries, counties = get_templates(base_url, recall_mapping)
+
+    process_constituency_data(constituencies, recall_mapping, is_started, is_running, final_data)
 
 
 def presindent2024_cec( summary, phase = 1 ):
