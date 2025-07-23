@@ -95,14 +95,16 @@ def recall202507_realtime():
         print("Exception message: {}".format(e))
         return
     voting_data = { "result": [] }
-    voting_data['title'] = meta_sheet.get_value("B2")       
-    get_cec_data = meta_sheet.get_value("B3")
+    #voting_data['title'] = meta_sheet.get_value("B2")       
+    get_cec_data = meta_sheet.get_value("B2")
+    display_iframe = meta_sheet.get_value("B3")  # 讀取 display_iframe
     if get_cec_data == 'T':
         cec_json = requests.get('https://whoareyou-gcs.readr.tw/elections-dev/2025/legislator/iframe/recall-july/iframe.json')
         if cec_json.status_code == 200:
             # 加入 source 欄位
             cec_data = json.loads(cec_json.text)
             cec_data['source'] = 'cec'
+            cec_data['display_iframe'] = display_iframe  # 加入 display_iframe
             upload_data(
                 'whoareyou-gcs.readr.tw',
                 json.dumps(cec_data, ensure_ascii=False).encode('utf8'),
@@ -156,7 +158,8 @@ def recall202507_realtime():
         data = {
             "updatedAt": date_time,
             "result": result,
-            "source": "mnews"
+            "source": "mnews",
+            "display_iframe": display_iframe  # 加入 display_iframe
         }
         json_str = json.dumps(data, ensure_ascii=False)
         upload_data(
