@@ -444,6 +444,105 @@ def process_county_data(counties, recall_mapping, is_started, is_running, runnin
             f'elections-dev/2025/legislator/map/county/recall-july/{county}.json'
         )
 
+def process_iframe(countries, recall_mapping, is_started, is_running, running_data, final_data):
+    cec_data = None if not is_started else running_data if is_running else final_data
+    country_data = countries[1]
+    if cec_data:
+        gmeb_data, prof_count_data, candidate_data = calculate_statistics_by_country(cec_data, recall_mapping)
+        update_summary_data(country_data['summary'], candidate_data, cec_data, prof_count_data, gmeb_data)
+    
+    candidates_template = country_data['summary']['candidates']
+    
+    candidate_names = {}
+    
+    all_candidate_numbers = set()
+    for areas in recall_mapping.values():
+        for item in areas:
+            candidate_no = item.get('no')
+            if candidate_no:
+                all_candidate_numbers.add(candidate_no)
+    
+    sorted_candidates = sorted(all_candidate_numbers)
+    
+    for i, candidate_no in enumerate(sorted_candidates):
+        if i < len(candidates_template):
+            candidate_names[candidate_no] = candidates_template[i]['name']
+    
+    if cec_data and 'A25' in cec_data:
+        candidate_names['A25'] = '高虹安'
+    
+    all_candidates = set()
+    for areas in recall_mapping.values():
+        for item in areas:
+            candidate_no = item.get('no')
+            if candidate_no:
+                all_candidates.add(candidate_no)
+    
+    if cec_data:
+        for candidate_no in cec_data.keys():
+            if candidate_no.startswith('A'):
+                all_candidates.add(candidate_no)
+    
+    result = []
+    
+    for candidate_no in sorted(all_candidates):
+        candidate_name = candidate_names.get(candidate_no, f'候選人{candidate_no}')
+        
+        candidate_vote = None
+        if cec_data and candidate_no in cec_data:
+            candidate_vote = find_candidate_vote_data(cec_data[candidate_no])
+        
+        template_candidate = None
+        if candidate_vote:
+            for cand in candidates_template:
+                if (cand['agreeTks'] == candidate_vote['agreeTks'] and 
+                    cand['disagreeTks'] == candidate_vote['disagreeTks']):
+                    template_candidate = cand
+                    break
+        
+        if template_candidate:
+            result.append({
+                'name': candidate_name,
+                'votePop': candidate_vote.get('gmeb', 0) if candidate_vote else 0,
+                'agreeTks': template_candidate['agreeTks'],
+                'disagreeTks': template_candidate['disagreeTks'],
+                'ytpRate': template_candidate['ytpRate'],
+                'ntpRate': template_candidate['ntpRate'],
+                'adptVictor': template_candidate['adptVictor']
+            })
+        elif candidate_vote:
+            result.append({
+                'name': candidate_name,
+                'votePop': candidate_vote.get('gmeb', 0),
+                'agreeTks': candidate_vote['agreeTks'],
+                'disagreeTks': candidate_vote['disagreeTks'],
+                'ytpRate': candidate_vote['ytpRate'],
+                'ntpRate': round(candidate_vote['disagreeTks'] / candidate_vote['gmeb'] * 100, 2) if candidate_vote['gmeb'] > 0 else 0.0,
+                'adptVictor': candidate_vote.get('adptVictor', '')
+            })
+        else:
+            result.append({
+                'name': candidate_name,
+                'votePop': 0,
+                'agreeTks': 0,
+                'disagreeTks': 0,
+                'ytpRate': 0.0,
+                'ntpRate': 0.0,
+                'adptVictor': ''
+            })
+    
+    data = {
+        'updatedAt': get_updated_at(country_data, cec_data),
+        'result': result
+    }
+    
+    upload_data(
+        'whoareyou-gcs.readr.tw',
+        json.dumps(data, ensure_ascii=False).encode('utf8'),
+        'application/json',
+        'elections-dev/2025/legislator/iframe/recall-july/iframe.json'
+    )
+
 def get_202507_recall_data():
     final_data = request_cec('final.json')
     running_data = request_cec('running.json')
@@ -459,6 +558,8 @@ def get_202507_recall_data():
     process_country_data(countries, recall_mapping, is_started, is_running, running_data, final_data)
 
     process_county_data(counties, recall_mapping, is_started, is_running, running_data, final_data)
+    
+    process_iframe(countries, recall_mapping, is_started, is_running, running_data, final_data)
 
 
 def presindent2024_cec( summary, phase = 1 ):
