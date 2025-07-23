@@ -258,6 +258,110 @@ def transform_cec_data_with_tbox_no(cec_data, candidate):
     
     return data
 
+def calculate_statistics_by_country(cec_data, recall_mapping):
+    def find_candidate_vote_data(candidate_votes):
+        for candidate_vote in candidate_votes:
+            if candidate_vote['deptCode'] == '000':
+                return candidate_vote
+        return None
+    def extract_candidate_vote_info(candidate_vote):
+        return {
+            "agreeTks": candidate_vote['agreeTks'],
+            "disagreeTks": candidate_vote['disagreeTks'],
+            "agreeRate": candidate_vote['agreeRate'],
+            "disagreeRate": candidate_vote['disagreeRate'],
+            "adptVictor": candidate_vote['adptVictor'],
+            "ytpRate": candidate_vote['ytpRate'],
+            "ntpRate": round(candidate_vote['disagreeTks'] / candidate_vote['gmeb'] * 100, 2)
+        }
+
+    gmeb_data = {}
+    prof_count_data = {}
+    candidate_data = []
+    
+    if cec_data is None:
+        return gmeb_data, prof_count_data, candidate_data
+    
+    for country, areas in recall_mapping.items():
+        gmeb_data[country] = 0
+        prof_count_data[country] = 0
+        
+        for item in areas:
+            area = item['area']
+            candidate = item['no']
+            
+            if area == 'NA':
+                continue
+
+            candidate_vote = find_candidate_vote_data(cec_data[candidate])
+            if candidate_vote:
+                gmeb_data[country] += candidate_vote['gmeb']
+                prof_count_data[country] += candidate_vote['prof3']
+                candidate_data.append(extract_candidate_vote_info(candidate_vote))
+    
+    return gmeb_data, prof_count_data, candidate_data
+
+def calculate_prof_rate(prof_count_data, gmeb_data):
+    total_prof_count = sum(prof_count_data.values())
+    total_gmeb = sum(gmeb_data.values())
+    
+    if total_gmeb == 0:
+        return 0.0
+    
+    return round(total_prof_count / total_gmeb * 100, 2)
+
+def update_candidate_info(candidates, candidate_data, cec_data):
+    for i, candidate in enumerate(candidates):
+        if cec_data is None:
+            set_default_candidate_values(candidate)
+        else:
+            if i < len(candidate_data):
+                update_candidate_with_data(candidate, candidate_data[i])
+            else:
+                set_default_candidate_values(candidate)
+
+def set_default_candidate_values(candidate):
+    candidate.update({
+        'agreeTks': 0,
+        'disagreeTks': 0,
+        'agreeRate': 0.0,
+        'disagreeRate': 0.0,
+        'adptVictor': '',
+        'ytpRate': 0.0,
+        'ntpRate': 0.0
+    })
+
+def update_candidate_with_data(candidate, candidate_vote_data):
+    candidate.update({
+        'agreeTks': candidate_vote_data['agreeTks'],
+        'disagreeTks': candidate_vote_data['disagreeTks'],
+        'agreeRate': candidate_vote_data['agreeRate'],
+        'disagreeRate': candidate_vote_data['disagreeRate'],
+        'adptVictor': candidate_vote_data['adptVictor'],
+        'ytpRate': candidate_vote_data['ytpRate'],
+        'ntpRate': candidate_vote_data['ntpRate']
+    })
+
+def update_summary_data(country_data_summary, candidate_data, cec_data, prof_count_data, gmeb_data):
+    country_data_summary['profRate'] = 0.0 if cec_data is None else calculate_prof_rate(prof_count_data, gmeb_data)
+    update_candidate_info(country_data_summary['candidates'], candidate_data, cec_data)
+
+def update_districts_data(country_data_districts, candidate_data, cec_data, prof_count_data, gmeb_data):
+    for district in country_data_districts:
+        county = district['county']
+        prof_count = prof_count_data.get(county, 0)
+        gmeb = gmeb_data.get(county, 0)
+        
+        district['profRate'] = 0.0 if cec_data is None else (round(prof_count / gmeb * 100, 2) if gmeb > 0 else 0.0)
+        
+        update_candidate_info(district['candidates'], candidate_data, cec_data)
+
+def get_updated_at(country_data, cec_data):
+    if cec_data is None:
+        return country_data['updatedAt']
+    else:
+        return format_202507_timestamp(cec_data['ST'])
+
 def process_constituency_data(constituencies, recall_mapping, is_started, is_running, final_data):
     for constituency in constituencies:
         cec_data = final_data if is_started & (not is_running) else None
@@ -278,6 +382,34 @@ def process_constituency_data(constituencies, recall_mapping, is_started, is_run
             f'elections-dev/2025/legislator/map/constituency/recall-july/{constituency[0]}{constituency[1]}.json'
         )
 
+def process_country_data(countries, recall_mapping, is_started, is_running, running_data, final_data):
+    country_data = countries[1]
+    country_data_summary = country_data['summary']
+    country_data_districts = country_data['districts']
+    
+    cec_data = None if not is_started else running_data if is_running else final_data
+    
+    gmeb_data, prof_count_data, candidate_data = calculate_statistics_by_country(cec_data, recall_mapping)
+    
+    update_summary_data(country_data_summary, candidate_data, cec_data, prof_count_data, gmeb_data)
+    
+    update_districts_data(country_data_districts, candidate_data, cec_data, prof_count_data, gmeb_data)
+    
+    data = {
+        'updatedAt': get_updated_at(country_data, cec_data),
+        'is_running': is_running,
+        'is_started': is_started,
+        'summary': country_data_summary,
+        'districts': country_data_districts
+    }
+    
+    upload_data(
+        'whoareyou-gcs.readr.tw',
+        json.dumps(data, ensure_ascii=False).encode('utf8'),
+        'application/json',
+        'elections-dev/2025/legislator/map/country/recall-july/country.json'
+    )
+
 def get_202507_recall_data():
     final_data = request_cec('final.json')
     running_data = request_cec('running.json')
@@ -289,6 +421,8 @@ def get_202507_recall_data():
     constituencies, countries, counties = get_templates(base_url, recall_mapping)
 
     process_constituency_data(constituencies, recall_mapping, is_started, is_running, final_data)
+
+    process_country_data(countries, recall_mapping, is_started, is_running, running_data, final_data)
 
 
 def presindent2024_cec( summary, phase = 1 ):
