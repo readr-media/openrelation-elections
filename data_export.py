@@ -98,7 +98,7 @@ def recall202507_realtime():
     voting_data['title'] = meta_sheet.get_value("B2")       
     get_cec_data = meta_sheet.get_value("B3")
     if get_cec_data == 'T':
-        cec_json = requests.get('https://whoareyou-gcs.readr.tw/elections-dev/2025_recall_election_data_final/iframe_data.json')
+        cec_json = requests.get('https://whoareyou-gcs.readr.tw/elections-dev/2025/legislator/iframe/recall-july/iframe.json')
         if cec_json.status_code == 200:
             upload_data(
                 'whoareyou-gcs.readr.tw',
@@ -114,7 +114,7 @@ def recall202507_realtime():
         votePop_map = {}
         # 只有本地沒有 votePop.json 時才去下載 iframe_data.json 來補
         if not os.path.exists(votePop_local):
-            iframe_url = 'https://whoareyou-gcs.readr.tw/elections-dev/2025_recall_election_data_final/iframe_data.json'
+            iframe_url = 'https://whoareyou-gcs.readr.tw/elections-dev/2025/legislator/iframe/recall-july/iframe.json'
             iframe_data = requests.get(iframe_url).json()
             for item in iframe_data['result']:
                 votePop_map[item['name']] = item['votePop']
