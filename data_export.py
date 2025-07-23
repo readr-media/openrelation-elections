@@ -94,6 +94,30 @@ def recall202507_realtime():
         print("Exception: {}".format(type(e).__name__))
         print("Exception message: {}".format(e))
         return
+    
+    # 新增：取得 homepage_display sheet 並轉為 json，上傳到 GCS
+    try:
+        homepage_display_sheet = sht.worksheet_by_title("homepage_display")
+        homepage_display_data = homepage_display_sheet.get_all_values()
+        # 轉為 json 格式
+        if homepage_display_data:
+            field_names = [field for field in homepage_display_data[0] if field != '']
+            homepage_display_json = []
+            for row in homepage_display_data[1:]:
+                if not row[0]:
+                    break
+                values = {field: value for field, value in zip(field_names, row)}
+                homepage_display_json.append(values)
+            upload_data(
+                'whoareyou-gcs.readr.tw',
+                json.dumps(homepage_display_json, ensure_ascii=False).encode('utf8'),
+                'application/json',
+                'json/202507_recall_homepage_display.json'
+            )
+            print('Upload 202507_recall_homepage_display.json successfully')
+    except Exception as e:
+        print("Exception: {}".format(type(e).__name__))
+        print("Exception message: {}".format(e))
     voting_data = { "result": [] }
     #voting_data['title'] = meta_sheet.get_value("B2")       
     get_cec_data = meta_sheet.get_value("B2")
