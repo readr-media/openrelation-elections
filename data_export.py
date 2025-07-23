@@ -138,13 +138,16 @@ def recall202507_realtime():
         for row in rows:
             name = row[0]
             votePop = votePop_map.get(name, 0)
+            disagreeTks = int(row[2])
+            ntpRate = disagreeTks / votePop if votePop else 0
             result.append({
                 "name": name,
                 "votePop": votePop,
                 "agreeTks": int(row[1]),
-                "disagreeTks": int(row[2]),
+                "disagreeTks": disagreeTks,
                 "ytpRate": float(row[3]),
-                "adptVictor": row[4]
+                "adptVictor": row[4],
+                "ntpRate": ntpRate
             })
         tz = timezone(timedelta(hours=+8))
         now = datetime.now(tz)
