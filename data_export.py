@@ -99,7 +99,7 @@ def recall202507_realtime():
     get_cec_data = meta_sheet.get_value("B2")
     display_iframe = meta_sheet.get_value("B3")  # 讀取 display_iframe
     if get_cec_data == 'T':
-        cec_json = requests.get('https://whoareyou-gcs.readr.tw/elections-dev/2025/legislator/iframe/recall-july/iframe.json')
+        cec_json = requests.get('https://whoareyou-gcs.readr.tw/elections-dev/2025_recall_election_data_final/iframe_data.json')
         if cec_json.status_code == 200:
             # 加入 source 欄位
             cec_data = json.loads(cec_json.text)
@@ -119,7 +119,7 @@ def recall202507_realtime():
         votePop_map = {}
         # 只有本地沒有 votePop.json 時才去下載 iframe_data.json 來補
         if not os.path.exists(votePop_local):
-            iframe_url = 'https://whoareyou-gcs.readr.tw/elections-dev/2025/legislator/iframe/recall-july/iframe.json'
+            iframe_url = 'https://whoareyou-gcs.readr.tw/elections-dev/2025_recall_election_data_final/iframe_data.json'
             iframe_data = requests.get(iframe_url).json()
             for item in iframe_data['result']:
                 votePop_map[item['name']] = item['votePop']
@@ -553,7 +553,7 @@ def process_iframe(countries, recall_mapping, is_started, is_running, running_da
         'whoareyou-gcs.readr.tw',
         json.dumps(data, ensure_ascii=False).encode('utf8'),
         'application/json',
-        'elections-dev/2025/legislator/iframe/recall-july/iframe.json'
+        'elections-dev/2025_recall_election_data_final/iframe_data.json'
     )
 
 def get_202507_recall_data():
