@@ -366,7 +366,7 @@ def get_updated_at(country_data, cec_data):
 def process_constituency_data(constituencies, recall_mapping, is_started, is_running, final_data):
     for constituency in constituencies:
         cec_data = final_data if is_started & (not is_running) else None
-        updatedAt = constituency[1]['updatedAt'] if cec_data is None else format_202507_timestamp(cec_data['ST'])
+        updatedAt = constituency[2]['updatedAt'] if cec_data is None else format_202507_timestamp(cec_data['ST'])
         # TODO: have bug...
         cec_data = transform_cec_data_with_tbox_no(cec_data, find_candidate_no(recall_mapping, constituency[0], constituency[1]))
         districts = parse_202507_constituency_data(constituency[2], cec_data)
