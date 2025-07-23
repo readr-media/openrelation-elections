@@ -8,7 +8,7 @@ from gql import gql, Client
 from google.cloud import storage
 from datetime import datetime, timezone, timedelta
 import sqlite3
-# from tools.cec_data import request_cec
+from tools.cec_data import request_cec
 
 def president2024_realtime():
     bucket = os.environ['BUCKET']
