@@ -101,13 +101,13 @@ def recall202507_realtime():
         homepage_display_data = homepage_display_sheet.get_all_values()
         # 轉為 json 格式
         if homepage_display_data:
-            field_names = [field for field in homepage_display_data[0] if field != '']
-            homepage_display_json = []
+            homepage_display_json = {}
             for row in homepage_display_data[1:]:
-                if not row[0]:
+                if not row or not row[0]:
                     break
-                values = {field: value for field, value in zip(field_names, row)}
-                homepage_display_json.append(values)
+                key = row[0]
+                value = row[1]
+                homepage_display_json[key] = value
             upload_data(
                 'whoareyou-gcs.readr.tw',
                 json.dumps(homepage_display_json, ensure_ascii=False).encode('utf8'),
