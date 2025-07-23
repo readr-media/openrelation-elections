@@ -195,7 +195,8 @@ def parse_202507_constituency_data(template, cec_data):
     for district in template['districts']:
         deptCode = district['town']
         tboxNo = district['vill']
-        data = None if cec_data is None or deptCode not in cec_data or tboxNo not in cec_data[deptCode] else cec_data[deptCode][tboxNo]
+        tboxNo_int = int(tboxNo) if tboxNo.isdigit() else tboxNo
+        data = None if cec_data is None or deptCode not in cec_data or tboxNo_int not in cec_data[deptCode] else cec_data[deptCode][tboxNo_int]
         district_data = {
             'range': district['range'],
             'area_nickname': district['area_nickname'],
@@ -372,7 +373,7 @@ def get_updated_at(country_data, cec_data):
 def process_constituency_data(constituencies, recall_mapping, is_started, is_running, final_data):
     for constituency in constituencies:
         cec_data = final_data if is_started & (not is_running) else None
-        updatedAt = constituency[1]['updatedAt'] if cec_data is None else format_202507_timestamp(cec_data['ST'])
+        updatedAt = constituency[2]['updatedAt'] if cec_data is None else format_202507_timestamp(cec_data['ST'])
         # TODO: have bug...
         cec_data = transform_cec_data_with_tbox_no(cec_data, find_candidate_no(recall_mapping, constituency[0], constituency[1]))
         districts = parse_202507_constituency_data(constituency[2], cec_data)
@@ -423,6 +424,8 @@ def process_county_data(counties, recall_mapping, is_started, is_running, runnin
         updatedAt = county_data['updatedAt'] if cec_data is None else format_202507_timestamp(cec_data['ST'])
         districts = county_data['districts']
         for district in districts:
+            district['profRate'] = 0.0 if cec_data is None else (round(district['profTks'] / district['gmeb'] * 100, 2))
+            district['votePop'] = 0 if cec_data is None else district['gmeb']
             for candidate in district['candidates']:
                 if cec_data is None:
                     set_default_candidate_values(candidate)
