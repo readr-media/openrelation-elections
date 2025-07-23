@@ -97,6 +97,7 @@ def recall202507_realtime():
     voting_data = { "result": [] }
     #voting_data['title'] = meta_sheet.get_value("B2")       
     get_cec_data = meta_sheet.get_value("B2")
+    print("source = " + get_cec_data)
     display_iframe = meta_sheet.get_value("B3")  # 讀取 display_iframe
     if get_cec_data == 'T':
         cec_json = requests.get('https://whoareyou-gcs.readr.tw/elections-dev/2025_recall_election_data_final/iframe_data.json')
