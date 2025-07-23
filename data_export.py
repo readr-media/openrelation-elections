@@ -116,32 +116,19 @@ def recall202507_realtime():
         else:
             print('Failed to get CEC data:', cec_json.status_code)
     else:
-        votePop_local = 'votePop.json'
-        votePop_map = {}
-        # 只有本地沒有 votePop.json 時才去下載 iframe_data.json 來補
-        if not os.path.exists(votePop_local):
-            iframe_url = 'https://whoareyou-gcs.readr.tw/elections-dev/2025_recall_election_data_final/iframe_data.json'
-            iframe_data = requests.get(iframe_url).json()
-            for item in iframe_data['result']:
-                votePop_map[item['name']] = item['votePop']
-            with open(votePop_local, 'w', encoding='utf-8') as f:
-                json.dump(votePop_map, f, ensure_ascii=False, indent=2)
-        else:
-            with open(votePop_local, 'r', encoding='utf-8') as f:
-                votePop_map = json.load(f)
         # 先從 GCS 下載 recall.db
         sqlite_local = 'recall.db'
         download_sqlite_from_gcs('statics-editools-prod', '0726.db', sqlite_local)
         # 查詢 SQLite
         conn = sqlite3.connect(sqlite_local)
         cursor = conn.cursor()
-        cursor.execute('SELECT name, agreeTks, disagreeTks, ytpRate, adptVictor FROM A1')
+        cursor.execute('SELECT name, agreeTks, disagreeTks, ytpRate, adptVictor, gmeb FROM A1')
         rows = cursor.fetchall()
         conn.close()
         result = []
         for row in rows:
             name = row[0]
-            votePop = votePop_map.get(name, 0)
+            votePop = int(row[5]) if row[5] else 0  # gmeb 欄位
             disagreeTks = int(row[2])
             ntpRate = round(disagreeTks / votePop * 100, 1) if votePop else 0
             result.append({
