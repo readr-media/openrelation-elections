@@ -258,23 +258,24 @@ def transform_cec_data_with_tbox_no(cec_data, candidate):
     
     return data
 
-def calculate_statistics_by_country(cec_data, recall_mapping):
-    def find_candidate_vote_data(candidate_votes):
+def find_candidate_vote_data(candidate_votes):
         for candidate_vote in candidate_votes:
             if candidate_vote['deptCode'] == '000':
                 return candidate_vote
         return None
-    def extract_candidate_vote_info(candidate_vote):
-        return {
-            "agreeTks": candidate_vote['agreeTks'],
-            "disagreeTks": candidate_vote['disagreeTks'],
-            "agreeRate": candidate_vote['agreeRate'],
-            "disagreeRate": candidate_vote['disagreeRate'],
-            "adptVictor": candidate_vote['adptVictor'],
-            "ytpRate": candidate_vote['ytpRate'],
-            "ntpRate": round(candidate_vote['disagreeTks'] / candidate_vote['gmeb'] * 100, 2)
-        }
 
+def extract_candidate_vote_info(candidate_vote):
+    return {
+        "agreeTks": candidate_vote['agreeTks'],
+        "disagreeTks": candidate_vote['disagreeTks'],
+        "agreeRate": candidate_vote['agreeRate'],
+        "disagreeRate": candidate_vote['disagreeRate'],
+        "adptVictor": candidate_vote['adptVictor'],
+        "ytpRate": candidate_vote['ytpRate'],
+        "ntpRate": round(candidate_vote['disagreeTks'] / candidate_vote['gmeb'] * 100, 2)
+    }
+
+def calculate_statistics_by_country(cec_data, recall_mapping):
     gmeb_data = {}
     prof_count_data = {}
     candidate_data = []
@@ -410,6 +411,36 @@ def process_country_data(countries, recall_mapping, is_started, is_running, runn
         'elections-dev/2025/legislator/map/country/recall-july/country.json'
     )
 
+def process_county_data(counties, recall_mapping, is_started, is_running, running_data, final_data):
+    cec_data = None if not is_started else running_data if is_running else final_data
+    for county, county_data in counties:
+        updatedAt = county_data['updatedAt'] if cec_data is None else format_202507_timestamp(cec_data['ST'])
+        districts = county_data['districts']
+        for district in districts:
+            for candidate in district['candidates']:
+                if cec_data is None:
+                    set_default_candidate_values(candidate)
+                else:
+                    candidate_vote = find_candidate_vote_data(cec_data[find_candidate_no(recall_mapping, county, district['area'])])
+                    if candidate_vote is None:
+                        set_default_candidate_values(candidate)
+                    else:
+                        candidate_vote['ntpRate'] = round(candidate_vote['disagreeTks'] / candidate_vote['gmeb'] * 100, 2) 
+                        update_candidate_with_data(candidate, candidate_vote)
+        data = {
+            'updatedAt': updatedAt,
+            'is_running': is_running,
+            'is_started': is_started,
+            'districts': districts
+        }
+
+        upload_data(
+            'whoareyou-gcs.readr.tw',
+            json.dumps(data, ensure_ascii=False).encode('utf8'),
+            'application/json',
+            f'elections-dev/2025/legislator/map/county/recall-july/{county}.json'
+        )
+
 def get_202507_recall_data():
     final_data = request_cec('final.json')
     running_data = request_cec('running.json')
@@ -423,6 +454,8 @@ def get_202507_recall_data():
     process_constituency_data(constituencies, recall_mapping, is_started, is_running, final_data)
 
     process_country_data(countries, recall_mapping, is_started, is_running, running_data, final_data)
+
+    process_county_data(counties, recall_mapping, is_started, is_running, running_data, final_data)
 
 
 def presindent2024_cec( summary, phase = 1 ):
