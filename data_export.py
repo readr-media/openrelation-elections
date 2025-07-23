@@ -189,7 +189,8 @@ def parse_202507_constituency_data(template, cec_data):
     for district in template['districts']:
         deptCode = district['town']
         tboxNo = district['vill']
-        data = None if cec_data is None or deptCode not in cec_data or tboxNo not in cec_data[deptCode] else cec_data[deptCode][tboxNo]
+        tboxNo_int = int(tboxNo) if tboxNo.isdigit() else tboxNo
+        data = None if cec_data is None or deptCode not in cec_data or tboxNo_int not in cec_data[deptCode] else cec_data[deptCode][tboxNo_int]
         district_data = {
             'range': district['range'],
             'area_nickname': district['area_nickname'],
