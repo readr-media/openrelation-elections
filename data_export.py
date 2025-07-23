@@ -200,7 +200,7 @@ def parse_202507_constituency_data(template, cec_data):
             'vill': district['vill'],
             'type': district['type'],
             'profRate': 0.0 if data is None else data['profRate'],
-            'profTks': 0 if data is None else data['gmeb'],
+            'votePop': 0 if data is None else data['gmeb'],
             'candidates': [
                 {
                     'candNo': candidate['candNo'],
@@ -418,7 +418,7 @@ def process_county_data(counties, recall_mapping, is_started, is_running, runnin
         updatedAt = county_data['updatedAt'] if cec_data is None else format_202507_timestamp(cec_data['ST'])
         districts = county_data['districts']
         for district in districts:
-            district['profRate'] = 0.0 if cec_data is None else (round(district['profTks'] / district['gmeb'] * 100, 2))
+            district['profRate'] = 0.0 if cec_data is None else (round(district['prof3'] / district['gmeb'] * 100, 2))
             district['votePop'] = 0 if cec_data is None else district['gmeb']
             for candidate in district['candidates']:
                 if cec_data is None:
