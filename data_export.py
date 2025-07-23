@@ -418,8 +418,8 @@ def process_county_data(counties, recall_mapping, is_started, is_running, runnin
         updatedAt = county_data['updatedAt'] if cec_data is None else format_202507_timestamp(cec_data['ST'])
         districts = county_data['districts']
         for district in districts:
-            district['profRate'] = 0.0 if cec_data is None else (round(district['prof3'] / district['gmeb'] * 100, 2))
-            district['votePop'] = 0 if cec_data is None else district['gmeb']
+            total_vote_pop = 0
+            total_prof_count = 0
             for candidate in district['candidates']:
                 if cec_data is None:
                     set_default_candidate_values(candidate)
@@ -428,8 +428,12 @@ def process_county_data(counties, recall_mapping, is_started, is_running, runnin
                     if candidate_vote is None:
                         set_default_candidate_values(candidate)
                     else:
+                        total_vote_pop += candidate_vote['gmeb']
+                        total_prof_count += candidate_vote['prof3']
                         candidate_vote['ntpRate'] = round(candidate_vote['disagreeTks'] / candidate_vote['gmeb'] * 100, 2) 
                         update_candidate_with_data(candidate, candidate_vote)
+            district['votePop'] = total_vote_pop
+            district['profRate'] = round(total_prof_count / total_vote_pop * 100, 2) if total_vote_pop > 0 else 0.0
         data = {
             'updatedAt': updatedAt,
             'is_running': is_running,
@@ -548,6 +552,9 @@ def get_202507_recall_data():
     running_data = request_cec('running.json')
     is_started = True if final_data or running_data else False
     is_running = True if running_data and not final_data else False
+
+    if not is_started and not is_running:
+        return
     
     base_url = 'https://whoareyou-gcs.readr.tw/elections-dev/2025/legislator/map/{}/recall-july/{}.json'
     recall_mapping = load_recall_mapping()
