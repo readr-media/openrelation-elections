@@ -124,7 +124,7 @@ def recall202507_realtime():
     print("source = " + get_cec_data)
     display_iframe = meta_sheet.get_value("B3")  # 讀取 display_iframe
     if get_cec_data == 'T':
-        cec_json = requests.get('https://whoareyou-gcs.readr.tw/elections-dev/2025_recall_election_data_final/iframe_data.json')
+        cec_json = requests.get('https://whoareyou-gcs.readr.tw/elections-dev/2025/legislator/iframe/recall-july/iframe.json')
         if cec_json.status_code == 200:
             # 加入 source 欄位
             cec_data = json.loads(cec_json.text)
@@ -537,7 +537,7 @@ def process_iframe(countries, recall_mapping, is_started, is_running, running_da
         'whoareyou-gcs.readr.tw',
         json.dumps(data, ensure_ascii=False).encode('utf8'),
         'application/json',
-        'elections-dev/2025_recall_election_data_final/iframe_data.json'
+        'elections-dev/2025/legislator/iframe/recall-july/iframe.json'
     )
 
 def find_candidate_no_by_name(recall_mapping, candidate_name, countries):
