@@ -423,6 +423,8 @@ def process_country_data(bucket_name, filename, countries, recall_mapping, is_st
     
     dump_2025_recall_data(bucket_name, filename, data)
 
+    return data
+
 def process_county_data(bucket_name, filename, counties, recall_mapping, is_started, is_running, running_data, final_data):
     cec_data = None if not is_started else running_data if is_running else final_data
     for county, county_data in counties:
@@ -520,41 +522,7 @@ def process_iframe(bucket_name, filename, countries, recall_mapping, is_started,
     
     dump_2025_recall_data(bucket_name, filename, data)
 
-def find_candidate_no_by_name(recall_mapping, candidate_name, countries):
-    if not countries or len(countries) < 2:
-        return None
-        
-    country_data = countries[1]
-    candidates_template = country_data.get('summary', {}).get('candidates', [])
-
-    name_to_candidate_no = {}
-    candidate_numbers = []
-    for areas in recall_mapping.values():
-        for item in areas:
-            candidate_no = item.get('no')
-            if candidate_no:
-                candidate_numbers.append(candidate_no)
-    
-    sorted_candidates = sorted(set(candidate_numbers))
-    
-    for i, candidate_no in enumerate(sorted_candidates):
-        if i < len(candidates_template):
-            name_to_candidate_no[candidates_template[i]['name']] = candidate_no
-    
-    name_to_candidate_no['高虹安'] = 'A25'
-    
-    return name_to_candidate_no.get(candidate_name)
-
-def find_candidate_no_for_mobile(recall_mapping, title, district_name):
-    """Find candidate number based on mobile data title and district"""
-    return None
-
-def process_mobile(bucket_name, filename, recall_mapping, is_started, is_running, running_data, final_data):
-    cec_data = None if not is_started else running_data if is_running else final_data
-    
-    base_template_url = 'https://whoareyou-gcs.readr.tw/elections-dev/2025/legislator/map/{}/recall-july/{}.json'
-    constituencies, countries, counties = get_templates(base_template_url, recall_mapping)
-    
+def process_mobile(bucket_name, filename, is_started, is_running, country_data):
     district_files = [
         'changhuaCounty', 'chiayiCity', 'chiayiCounty', 
         'hsinchuCity', 'hsinchuCounty', 'hualienCounty',
@@ -565,64 +533,31 @@ def process_mobile(bucket_name, filename, recall_mapping, is_started, is_running
         'taitungCounty', 'taoyuanCity', 'yilanCounty', 
         'yunlinCounty'
     ]
-    
-    base_url = 'https://whoareyou-gcs.readr.tw/elections-dev/v2/2025/recall/district/{}'
-    
+
+    base_url = 'https://whoareyou-gcs.readr.tw/elections-dev/v2/2025/recall/district/{}.json'
     for district_file in district_files:
-        try:
-            url = base_url.format(district_file)
-            response = requests.get(url)
-            
-            if response.status_code == 200:
-                district_data = response.json()
-                title = district_data.get('title', '')
-                
-                updated_districts = []
-                for district in district_data.get('districts', []):
-                    updated_candidates = []
-                    
-                    for candidate in district.get('candidates', []):
-                        updated_candidate = candidate.copy()
-                        
-                        if cec_data:
-                            candidate_name = candidate.get('name', {}).get('label', '')
-                            candidate_no = find_candidate_no_by_name(recall_mapping, candidate_name, countries)
-                            
-                            if candidate_no and candidate_no in cec_data:
-                                candidate_vote = find_candidate_vote_data(cec_data[candidate_no])
-                                if candidate_vote:
-                                    updated_candidate.update({
-                                        'agreeTks': candidate_vote['agreeTks'],
-                                        'disagreeTks': candidate_vote['disagreeTks'],
-                                        'agreeRate': candidate_vote['agreeRate'],
-                                        'disagreeRate': candidate_vote['disagreeRate'],
-                                        'adptVictor': candidate_vote['adptVictor'],
-                                        'ytpRate': candidate_vote['ytpRate'],
-                                        'ntpRate': round(candidate_vote['disagreeTks'] / candidate_vote['gmeb'] * 100, 2) if candidate_vote['gmeb'] > 0 else 0.0
-                                    })
-                        
-                        updated_candidates.append(updated_candidate)
-                    
-                    updated_district = district.copy()
-                    updated_district['candidates'] = updated_candidates
-                    updated_districts.append(updated_district)
-                
-                output_data = {
-                    'updatedAt': format_202507_timestamp(cec_data['ST']) if cec_data else district_data.get('updatedAt', '2025-07-03 20:15:00'),
-                    'year': district_data.get('year', '2025'),
-                    'type': district_data.get('type', 'legislator-recall'),
-                    'title': district_data.get('title', ''),
-                    'version': district_data.get('version', 'v2'),
-                    'is_running': is_running,
-                    'is_started': is_started,
-                    'districts': updated_districts
-                }
-                
-                dump_2025_recall_data(bucket_name, filename.format(district_file), output_data)
-                
-        except Exception as e:
-            print(f"Error processing {district_file}: {e}")
-            continue
+        request_data = requests.get(base_url.format(district_file))
+        if request_data.status_code == 200:
+            district_data = request_data.json()
+            district_data['updatedAt'] = country_data['updatedAt']
+            district_data['is_running'] = is_running
+            district_data['is_started'] = is_started
+            for district in district_data['districts']:
+                for candidate in district['candidates']:
+                    candidate_name = candidate['name']['label']
+                    for item in country_data['summary']['candidates']:
+                        if item['name'] == candidate_name:
+                            candidate['agreeTks'] = item['agreeTks']
+                            candidate['disagreeTks'] = item['disagreeTks']
+                            candidate['agreeRate'] = item['agreeRate']
+                            candidate['disagreeRate'] = item['disagreeRate']
+                            candidate['adptVictor'] = item['adptVictor']
+                            candidate['ytpRate'] = item['ytpRate']
+                            candidate['ntpRate'] = item['ntpRate']
+                            break
+            dump_2025_recall_data(bucket_name, filename.format(district_file), district_data)
+        else:
+            print(f"Failed to fetch data for {district_file}")
 
 def get_202507_recall_data():
     final_data = request_cec('final.json')
