@@ -581,13 +581,13 @@ def get_202507_recall_data():
 
     process_constituency_data(bucket_name, constituency_filename, constituencies, recall_mapping, is_started, is_running, final_data)
 
-    process_country_data(bucket_name, country_filename, countries, recall_mapping, is_started, is_running, running_data, final_data)
+    country_data = process_country_data(bucket_name, country_filename, countries, recall_mapping, is_started, is_running, running_data, final_data)
 
     process_county_data(bucket_name, county_filename, counties, recall_mapping, is_started, is_running, running_data, final_data)
     
     process_iframe(bucket_name, iframe_filename, countries, recall_mapping, is_started, is_running, running_data, final_data)
     
-    process_mobile(bucket_name, mobile_filename, recall_mapping, is_started, is_running, running_data, final_data)
+    process_mobile(bucket_name, mobile_filename, is_started, is_running, country_data)
 
 def presindent2024_cec( summary, phase = 1 ):
     tks = []
