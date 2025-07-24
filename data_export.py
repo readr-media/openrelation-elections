@@ -385,7 +385,7 @@ def get_updated_at(country_data, cec_data):
     else:
         return format_202507_timestamp(cec_data['ST'])
 
-def process_constituency_data(constituencies, recall_mapping, is_started, is_running, final_data):
+def process_constituency_data(bucket_name, filename, constituencies, recall_mapping, is_started, is_running, final_data):
     for constituency in constituencies:
         cec_data = final_data if is_started & (not is_running) else None
         updatedAt = constituency[2]['updatedAt'] if cec_data is None else format_202507_timestamp(cec_data['ST'])
@@ -399,13 +399,13 @@ def process_constituency_data(constituencies, recall_mapping, is_started, is_run
             'districts': districts
         }
         upload_data(
-            'whoareyou-gcs.readr.tw',
+            bucket_name,
             json.dumps(data, ensure_ascii=False).encode('utf8'),
             'application/json',
-            f'elections-dev/2025/legislator/map/constituency/recall-july/{constituency[0]}{constituency[1]}.json'
+            filename.format(constituency[0] + constituency[1])
         )
 
-def process_country_data(countries, recall_mapping, is_started, is_running, running_data, final_data):
+def process_country_data(bucket_name, filename, countries, recall_mapping, is_started, is_running, running_data, final_data):
     country_data = countries[1]
     country_data_summary = country_data['summary']
     country_data_districts = country_data['districts']
@@ -427,13 +427,13 @@ def process_country_data(countries, recall_mapping, is_started, is_running, runn
     }
     
     upload_data(
-        'whoareyou-gcs.readr.tw',
+        bucket_name,
         json.dumps(data, ensure_ascii=False).encode('utf8'),
         'application/json',
-        'elections-dev/2025/legislator/map/country/recall-july/country.json'
+        filename
     )
 
-def process_county_data(counties, recall_mapping, is_started, is_running, running_data, final_data):
+def process_county_data(bucket_name, filename, counties, recall_mapping, is_started, is_running, running_data, final_data):
     cec_data = None if not is_started else running_data if is_running else final_data
     for county, county_data in counties:
         updatedAt = county_data['updatedAt'] if cec_data is None else format_202507_timestamp(cec_data['ST'])
@@ -463,13 +463,13 @@ def process_county_data(counties, recall_mapping, is_started, is_running, runnin
         }
 
         upload_data(
-            'whoareyou-gcs.readr.tw',
+            bucket_name,
             json.dumps(data, ensure_ascii=False).encode('utf8'),
             'application/json',
-            f'elections-dev/2025/legislator/map/county/recall-july/{county}.json'
+            filename.format(county)
         )
 
-def process_iframe(countries, recall_mapping, is_started, is_running, running_data, final_data):
+def process_iframe(bucket_name, filename, countries, recall_mapping, is_started, is_running, running_data, final_data):
     cec_data = None if not is_started else running_data if is_running else final_data
     country_data = countries[1]
     
@@ -534,10 +534,10 @@ def process_iframe(countries, recall_mapping, is_started, is_running, running_da
     }
     
     upload_data(
-        'whoareyou-gcs.readr.tw',
+        bucket_name,
         json.dumps(data, ensure_ascii=False).encode('utf8'),
         'application/json',
-        'elections-dev/2025/legislator/iframe/recall-july/iframe.json'
+        filename
     )
 
 def find_candidate_no_by_name(recall_mapping, candidate_name, countries):
@@ -569,7 +569,7 @@ def find_candidate_no_for_mobile(recall_mapping, title, district_name):
     """Find candidate number based on mobile data title and district"""
     return None
 
-def process_mobile(recall_mapping, is_started, is_running, running_data, final_data):
+def process_mobile(bucket_name, filename, recall_mapping, is_started, is_running, running_data, final_data):
     cec_data = None if not is_started else running_data if is_running else final_data
     
     base_template_url = 'https://whoareyou-gcs.readr.tw/elections-dev/2025/legislator/map/{}/recall-july/{}.json'
@@ -639,10 +639,10 @@ def process_mobile(recall_mapping, is_started, is_running, running_data, final_d
                 }
                 
                 upload_data(
-                    'whoareyou-gcs.readr.tw',
+                    bucket_name,
                     json.dumps(output_data, ensure_ascii=False).encode('utf8'),
                     'application/json',
-                    f'elections-dev/v2/2025/recall/district/{district_file}'
+                    filename.format(district_file)
                 )
                 
         except Exception as e:
@@ -662,15 +662,23 @@ def get_202507_recall_data():
     recall_mapping = load_recall_mapping()
     constituencies, countries, counties = get_templates(base_url, recall_mapping)
 
-    process_constituency_data(constituencies, recall_mapping, is_started, is_running, final_data)
+    bucket_name = 'whoareyou-gcs.readr.tw'
+    constituency_filename = 'elections-dev/2025/legislator/map/constituency/recall-july/{}.json'
+    country_filename = 'elections-dev/2025/legislator/map/country/recall-july/country.json'
+    county_filename = 'elections-dev/2025/legislator/map/county/recall-july/{}.json'
+    iframe_filename = 'elections-dev/2025/legislator/iframe/recall-july/iframe.json'
+    mobile_filename = 'elections-dev/v2/2025/recall/district/{}.json'
 
-    process_country_data(countries, recall_mapping, is_started, is_running, running_data, final_data)
 
-    process_county_data(counties, recall_mapping, is_started, is_running, running_data, final_data)
+    process_constituency_data(bucket_name, constituency_filename, constituencies, recall_mapping, is_started, is_running, final_data)
+
+    process_country_data(bucket_name, country_filename, countries, recall_mapping, is_started, is_running, running_data, final_data)
+
+    process_county_data(bucket_name, county_filename, counties, recall_mapping, is_started, is_running, running_data, final_data)
     
-    process_iframe(countries, recall_mapping, is_started, is_running, running_data, final_data)
+    process_iframe(bucket_name, iframe_filename, countries, recall_mapping, is_started, is_running, running_data, final_data)
     
-    process_mobile(recall_mapping, is_started, is_running, running_data, final_data)
+    process_mobile(bucket_name, mobile_filename, recall_mapping, is_started, is_running, running_data, final_data)
 
 
 def presindent2024_cec( summary, phase = 1 ):
