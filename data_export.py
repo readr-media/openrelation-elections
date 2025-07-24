@@ -124,7 +124,7 @@ def recall202507_realtime():
     print("source = " + get_cec_data)
     display_iframe = meta_sheet.get_value("B3")  # 讀取 display_iframe
     if get_cec_data == 'T':
-        cec_json = requests.get('https://whoareyou-gcs.readr.tw/elections-dev/2025_recall_election_data_final/iframe_data.json')
+        cec_json = requests.get('https://whoareyou-gcs.readr.tw/elections-dev/2025/legislator/iframe/recall-july/iframe.json')
         if cec_json.status_code == 200:
             # 加入 source 欄位
             cec_data = json.loads(cec_json.text)
@@ -472,29 +472,24 @@ def process_county_data(counties, recall_mapping, is_started, is_running, runnin
 def process_iframe(countries, recall_mapping, is_started, is_running, running_data, final_data):
     cec_data = None if not is_started else running_data if is_running else final_data
     country_data = countries[1]
-    if cec_data:
-        gmeb_data, prof_count_data, candidate_data = calculate_statistics_by_country(cec_data, recall_mapping)
-        update_summary_data(country_data['summary'], candidate_data, cec_data, prof_count_data, gmeb_data)
     
-    candidates_template = country_data['summary']['candidates']
+    base_url = 'https://whoareyou-gcs.readr.tw/elections-dev/2025/legislator/map/{}/recall-july/{}.json'
+    constituencies, _, _ = get_templates(base_url, recall_mapping)
     
-    candidate_names = {}
+    candidate_no_to_name = {}
     
-    all_candidate_numbers = set()
-    for areas in recall_mapping.values():
-        for item in areas:
-            candidate_no = item.get('no')
-            if candidate_no:
-                all_candidate_numbers.add(candidate_no)
+    for county_code, area_code, constituency_data in constituencies:
+        if constituency_data.get('districts') and constituency_data['districts']:
+            district = constituency_data['districts'][0]
+            if district.get('candidates'):
+                candidate_name = district['candidates'][0]['name']
+                for areas in recall_mapping.get(county_code, []):
+                    if areas['area'] == area_code:
+                        candidate_no = areas['no']
+                        candidate_no_to_name[candidate_no] = candidate_name
+                        break
     
-    sorted_candidates = sorted(all_candidate_numbers)
-    
-    for i, candidate_no in enumerate(sorted_candidates):
-        if i < len(candidates_template):
-            candidate_names[candidate_no] = candidates_template[i]['name']
-    
-    if cec_data and 'A25' in cec_data:
-        candidate_names['A25'] = '高虹安'
+    candidate_no_to_name['A25'] = '高虹安'
     
     all_candidates = set()
     for areas in recall_mapping.values():
@@ -503,39 +498,16 @@ def process_iframe(countries, recall_mapping, is_started, is_running, running_da
             if candidate_no:
                 all_candidates.add(candidate_no)
     
-    if cec_data:
-        for candidate_no in cec_data.keys():
-            if candidate_no.startswith('A'):
-                all_candidates.add(candidate_no)
-    
     result = []
     
     for candidate_no in sorted(all_candidates):
-        candidate_name = candidate_names.get(candidate_no, f'候選人{candidate_no}')
+        candidate_name = candidate_no_to_name.get(candidate_no, f'候選人{candidate_no}')
         
         candidate_vote = None
         if cec_data and candidate_no in cec_data:
             candidate_vote = find_candidate_vote_data(cec_data[candidate_no])
         
-        template_candidate = None
         if candidate_vote:
-            for cand in candidates_template:
-                if (cand['agreeTks'] == candidate_vote['agreeTks'] and 
-                    cand['disagreeTks'] == candidate_vote['disagreeTks']):
-                    template_candidate = cand
-                    break
-        
-        if template_candidate:
-            result.append({
-                'name': candidate_name,
-                'votePop': candidate_vote.get('gmeb', 0) if candidate_vote else 0,
-                'agreeTks': template_candidate['agreeTks'],
-                'disagreeTks': template_candidate['disagreeTks'],
-                'ytpRate': template_candidate['ytpRate'],
-                'ntpRate': template_candidate['ntpRate'],
-                'adptVictor': template_candidate['adptVictor']
-            })
-        elif candidate_vote:
             result.append({
                 'name': candidate_name,
                 'votePop': candidate_vote.get('gmeb', 0),
@@ -565,7 +537,7 @@ def process_iframe(countries, recall_mapping, is_started, is_running, running_da
         'whoareyou-gcs.readr.tw',
         json.dumps(data, ensure_ascii=False).encode('utf8'),
         'application/json',
-        'elections-dev/2025_recall_election_data_final/iframe_data.json'
+        'elections-dev/2025/legislator/iframe/recall-july/iframe.json'
     )
 
 def find_candidate_no_by_name(recall_mapping, candidate_name, countries):
