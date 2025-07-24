@@ -398,12 +398,7 @@ def process_constituency_data(bucket_name, filename, constituencies, recall_mapp
             'is_started': is_started,
             'districts': districts
         }
-        upload_data(
-            bucket_name,
-            json.dumps(data, ensure_ascii=False).encode('utf8'),
-            'application/json',
-            filename.format(constituency[0] + constituency[1])
-        )
+        dump_2025_recall_data(bucket_name, filename.format(constituency[0] + constituency[1]), data)
 
 def process_country_data(bucket_name, filename, countries, recall_mapping, is_started, is_running, running_data, final_data):
     country_data = countries[1]
@@ -426,12 +421,7 @@ def process_country_data(bucket_name, filename, countries, recall_mapping, is_st
         'districts': country_data_districts
     }
     
-    upload_data(
-        bucket_name,
-        json.dumps(data, ensure_ascii=False).encode('utf8'),
-        'application/json',
-        filename
-    )
+    dump_2025_recall_data(bucket_name, filename, data)
 
 def process_county_data(bucket_name, filename, counties, recall_mapping, is_started, is_running, running_data, final_data):
     cec_data = None if not is_started else running_data if is_running else final_data
@@ -462,12 +452,7 @@ def process_county_data(bucket_name, filename, counties, recall_mapping, is_star
             'districts': districts
         }
 
-        upload_data(
-            bucket_name,
-            json.dumps(data, ensure_ascii=False).encode('utf8'),
-            'application/json',
-            filename.format(county)
-        )
+        dump_2025_recall_data(bucket_name, filename.format(county), data)
 
 def process_iframe(bucket_name, filename, countries, recall_mapping, is_started, is_running, running_data, final_data):
     cec_data = None if not is_started else running_data if is_running else final_data
@@ -533,12 +518,7 @@ def process_iframe(bucket_name, filename, countries, recall_mapping, is_started,
         'result': result
     }
     
-    upload_data(
-        bucket_name,
-        json.dumps(data, ensure_ascii=False).encode('utf8'),
-        'application/json',
-        filename
-    )
+    dump_2025_recall_data(bucket_name, filename, data)
 
 def find_candidate_no_by_name(recall_mapping, candidate_name, countries):
     if not countries or len(countries) < 2:
@@ -576,14 +556,14 @@ def process_mobile(bucket_name, filename, recall_mapping, is_started, is_running
     constituencies, countries, counties = get_templates(base_template_url, recall_mapping)
     
     district_files = [
-        'changhuaCounty.json', 'chiayiCity.json', 'chiayiCounty.json', 
-        'hsinchuCity.json', 'hsinchuCounty.json', 'hualienCounty.json',
-        'kaohsiungCity.json', 'keelungCity.json', 'kinmenCounty.json',
-        'lienchiangCounty.json', 'miaoliCounty.json', 'nantouCounty.json',
-        'newTaipeiCity.json', 'penghuCounty.json', 'pingtungCounty.json',
-        'taichungCity.json', 'tainanCity.json', 'taipeiCity.json',
-        'taitungCounty.json', 'taoyuanCity.json', 'yilanCounty.json', 
-        'yunlinCounty.json'
+        'changhuaCounty', 'chiayiCity', 'chiayiCounty', 
+        'hsinchuCity', 'hsinchuCounty', 'hualienCounty',
+        'kaohsiungCity', 'keelungCity', 'kinmenCounty',
+        'lienchiangCounty', 'miaoliCounty', 'nantouCounty',
+        'newTaipeiCity', 'penghuCounty', 'pingtungCounty',
+        'taichungCity', 'tainanCity', 'taipeiCity',
+        'taitungCounty', 'taoyuanCity', 'yilanCounty', 
+        'yunlinCounty'
     ]
     
     base_url = 'https://whoareyou-gcs.readr.tw/elections-dev/v2/2025/recall/district/{}'
@@ -638,12 +618,7 @@ def process_mobile(bucket_name, filename, recall_mapping, is_started, is_running
                     'districts': updated_districts
                 }
                 
-                upload_data(
-                    bucket_name,
-                    json.dumps(output_data, ensure_ascii=False).encode('utf8'),
-                    'application/json',
-                    filename.format(district_file)
-                )
+                dump_2025_recall_data(bucket_name, filename.format(district_file), output_data)
                 
         except Exception as e:
             print(f"Error processing {district_file}: {e}")
@@ -669,7 +644,6 @@ def get_202507_recall_data():
     iframe_filename = 'elections-dev/2025/legislator/iframe/recall-july/iframe.json'
     mobile_filename = 'elections-dev/v2/2025/recall/district/{}.json'
 
-
     process_constituency_data(bucket_name, constituency_filename, constituencies, recall_mapping, is_started, is_running, final_data)
 
     process_country_data(bucket_name, country_filename, countries, recall_mapping, is_started, is_running, running_data, final_data)
@@ -679,7 +653,6 @@ def get_202507_recall_data():
     process_iframe(bucket_name, iframe_filename, countries, recall_mapping, is_started, is_running, running_data, final_data)
     
     process_mobile(bucket_name, mobile_filename, recall_mapping, is_started, is_running, running_data, final_data)
-
 
 def presindent2024_cec( summary, phase = 1 ):
     tks = []
@@ -766,6 +739,16 @@ def gql2json(gql_endpoint, gql_string):
     json_data = gql_client.execute(query)
     #upload_data(bucket, json.dumps(json_data, ensure_ascii=False).encode('utf8'), 'application/json', gcs_path + DEST)
     return json_data
+
+def dump_2025_recall_data(bucket_name, filename, data):
+    data_upload_source = os.getenv('DATA_UPLOAD_SOURCE', 'gcs')
+    if data_upload_source == 'gcs':
+        upload_data(bucket_name, json.dumps(data, ensure_ascii=False).encode('utf8'), 'application/json', filename)
+    elif data_upload_source == 'local':
+        with open(filename, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    else:
+        print(f"Invalid data upload source: {data_upload_source}")
 
 def upload_data(bucket_name: str, data: str, content_type: str, destination_blob_name: str):
     '''Uploads a file to the bucket.'''
