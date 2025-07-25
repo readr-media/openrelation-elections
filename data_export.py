@@ -209,9 +209,8 @@ def parse_202507_constituency_data(template, cec_data):
     districts = []
     for district in template['districts']:
         deptCode = district['town']
-        tboxNo = district['vill']
-        tboxNo_int = int(tboxNo) if tboxNo.isdigit() else tboxNo
-        data = None if cec_data is None or deptCode not in cec_data or tboxNo_int not in cec_data[deptCode] else cec_data[deptCode][tboxNo_int]
+        villcode = district['vill']
+        data = None if cec_data is None or deptCode not in cec_data or villcode not in cec_data[deptCode] else cec_data[deptCode][villcode]
         district_data = {
             'range': district['range'],
             'area_nickname': district['area_nickname'],
@@ -264,19 +263,28 @@ def find_candidate_no(recall_mapping, constituency_code, area_code):
     
     return candidate
 
-def transform_cec_data_with_tbox_no(cec_data, candidate):
+def transform_cec_data_with_tbox_no(cec_data, candidate, voter_mapping=None, county_code=None):
     if cec_data is None:
         return None
+    
+    if voter_mapping is None:
+        voter_mapping = json.load(open('./mapping/2025/voter.json', 'r', encoding='utf-8'))
     
     data = {}
     for vill_status in cec_data[candidate]:
         dept_code = vill_status['deptCode']
-        tbox_no = vill_status['tboxNo']
+        tbox_no = str(vill_status['tboxNo']).zfill(4)
         
         if dept_code not in data:
             data[dept_code] = {}
         
-        data[dept_code][tbox_no] = vill_status
+        mapping_key = f"{county_code}{dept_code}" if county_code else dept_code
+        
+        villcode = tbox_no
+        if mapping_key in voter_mapping and tbox_no in voter_mapping[mapping_key]:
+            villcode = voter_mapping[mapping_key][tbox_no]['villcode']
+        
+        data[dept_code][villcode] = vill_status
     
     return data
 
@@ -386,11 +394,13 @@ def get_updated_at(country_data, cec_data):
         return format_202507_timestamp(cec_data['ST'])
 
 def process_constituency_data(bucket_name, filename, constituencies, recall_mapping, is_started, is_running, final_data):
+    voter_mapping = json.load(open('./mapping/2025/voter.json', 'r', encoding='utf-8'))
+    
     for constituency in constituencies:
         cec_data = final_data if is_started & (not is_running) else None
         updatedAt = constituency[2]['updatedAt'] if cec_data is None else format_202507_timestamp(cec_data['ST'])
-        # TODO: have bug...
-        cec_data = transform_cec_data_with_tbox_no(cec_data, find_candidate_no(recall_mapping, constituency[0], constituency[1]))
+        county_code = constituency[0]
+        cec_data = transform_cec_data_with_tbox_no(cec_data, find_candidate_no(recall_mapping, constituency[0], constituency[1]), voter_mapping, county_code)
         districts = parse_202507_constituency_data(constituency[2], cec_data)
         data = {
             'updatedAt': updatedAt,
