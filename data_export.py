@@ -389,6 +389,14 @@ def update_districts_data(country_data_districts, candidate_data, cec_data, prof
         
         update_candidate_info(district['candidates'], candidate_data, cec_data)
 
+def update_districts_data_by_summary(summary_data, districts_data):
+    for district in districts_data:
+        for candidate in district['candidates']:
+            for summary_candidate in summary_data['candidates']:
+                if candidate['name'] == summary_candidate['name']:
+                    update_candidate_with_data(candidate, summary_candidate)
+                    break
+
 def get_updated_at(country_data, cec_data):
     if cec_data is None:
         return country_data['updatedAt']
@@ -423,7 +431,8 @@ def process_country_data(bucket_name, filename, countries, recall_mapping, is_st
     
     update_summary_data(country_data_summary, candidate_data, cec_data, prof_count_data, gmeb_data)
     
-    update_districts_data(country_data_districts, candidate_data, cec_data, prof_count_data, gmeb_data)
+    update_districts_data_by_summary(country_data_summary, country_data_districts)
+    #update_districts_data(country_data_districts, candidate_data, cec_data, prof_count_data, gmeb_data)
     
     data = {
         'updatedAt': get_updated_at(country_data, cec_data),
