@@ -572,8 +572,8 @@ def process_mobile(base_bucket_folder, bucket_name, filename, is_started, is_run
             print(f"Failed to fetch data for {district_file}")
 
 def get_202507_recall_data():
-    final_data = request_cec('final.json')
     running_data = request_cec('running.json')
+    final_data = request_cec('final.json')
     is_started = True if final_data or running_data else False
     is_running = True if running_data and not final_data else False
 
