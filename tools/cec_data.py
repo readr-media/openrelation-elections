@@ -33,8 +33,11 @@ def check_updated_and_save(url, secure_mode=False):
     r = requests.get(url=url, auth=(os.environ['USERNAME'], os.environ['PASSWD']), verify=secure_mode)
     try:
         r.raise_for_status()
-    except requests.exceptions.HTTPError:
+    except requests.exceptions.HTTPError as e:
         print(f"Couldn't get CEC data from {url}")
+        print(f"HTTP Error: {e}")
+        print(f"Response Status Code: {r.status_code}")
+        print(f"Response Text: {r.text}")
         return
     
     new_data = json.loads(r.text)
