@@ -695,6 +695,7 @@ def dump_2025_recall_data(bucket_name, filename, data):
     elif data_upload_source == 'local':
         with open(filename, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+            print(f"Dump {filename} successfully")
     else:
         print(f"Invalid data upload source: {data_upload_source}")
 
