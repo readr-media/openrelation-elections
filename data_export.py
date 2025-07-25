@@ -85,6 +85,7 @@ def president2024_realtime():
     return "OK"
 
 def recall202507_realtime():
+    base_bucket_folder =  os.getenv('BASE_BUCKET_FOLDER_202507', 'elections-dev')
     gc = pygsheets.authorize(service_account_env_var = 'GDRIVE_API_CREDENTIALS')
     url = "https://docs.google.com/spreadsheets/d/1pri5X5k-_OGxOmRDQ10doKGxs9x4s3ZvU5YJ6D8YmLI/edit"
     sht = gc.open_by_url(url)
@@ -124,7 +125,7 @@ def recall202507_realtime():
     print("source = " + get_cec_data)
     display_iframe = meta_sheet.get_value("B3")  # 讀取 display_iframe
     if get_cec_data == 'T':
-        cec_json = requests.get('https://whoareyou-gcs.readr.tw/elections-dev/2025/legislator/iframe/recall-july/iframe.json')
+        cec_json = requests.get(f'https://whoareyou-gcs.readr.tw/{base_bucket_folder}/2025/legislator/iframe/recall-july/iframe.json')
         if cec_json.status_code == 200:
             # 加入 source 欄位
             cec_data = json.loads(cec_json.text)
@@ -183,7 +184,8 @@ def recall202507_realtime():
         print('Upload recall_iframe.json successfully')
 
 def load_recall_mapping():
-    recallno_mapping_json = requests.get('https://whoareyou-gcs.readr.tw/elections-dev/candNo-mapping/202507_recallno_mapping.json')
+    base_bucket_folder =  os.getenv('BASE_BUCKET_FOLDER_202507', 'elections-dev')
+    recallno_mapping_json = requests.get(f'https://whoareyou-gcs.readr.tw/{base_bucket_folder}/candNo-mapping/202507_recallno_mapping.json')
     return recallno_mapping_json.json()
 
 def get_templates(base_url, recall_mapping):
@@ -466,11 +468,11 @@ def process_county_data(bucket_name, filename, counties, recall_mapping, is_star
 
         dump_2025_recall_data(bucket_name, filename.format(county), data)
 
-def process_iframe(bucket_name, filename, countries, recall_mapping, is_started, is_running, running_data, final_data):
+def process_iframe(base_bucket_folder, bucket_name, filename, countries, recall_mapping, is_started, is_running, running_data, final_data):
     cec_data = None if not is_started else running_data if is_running else final_data
     country_data = countries[1]
     
-    base_url = 'https://whoareyou-gcs.readr.tw/elections-dev/2025/legislator/map/{}/recall-july/{}.json'
+    base_url = f'https://whoareyou-gcs.readr.tw/{base_bucket_folder}/2025/legislator/map/{}/recall-july/{}.json'
     constituencies, _, _ = get_templates(base_url, recall_mapping)
     
     candidate_no_to_name = {}
@@ -532,7 +534,7 @@ def process_iframe(bucket_name, filename, countries, recall_mapping, is_started,
     
     dump_2025_recall_data(bucket_name, filename, data)
 
-def process_mobile(bucket_name, filename, is_started, is_running, country_data):
+def process_mobile(base_bucket_folder, bucket_name, filename, is_started, is_running, country_data):
     district_files = [
         'changhuaCounty', 'chiayiCity', 'chiayiCounty', 
         'hsinchuCity', 'hsinchuCounty', 'hualienCounty',
@@ -544,7 +546,7 @@ def process_mobile(bucket_name, filename, is_started, is_running, country_data):
         'yunlinCounty'
     ]
 
-    base_url = 'https://whoareyou-gcs.readr.tw/elections-dev/v2/2025/recall/district/{}.json'
+    base_url = f'https://whoareyou-gcs.readr.tw/{base_bucket_folder}/v2/2025/recall/district/{}.json'
     for district_file in district_files:
         request_data = requests.get(base_url.format(district_file))
         if request_data.status_code == 200:
@@ -578,16 +580,17 @@ def get_202507_recall_data():
     if not is_started and not is_running:
         return
     
-    base_url = 'https://whoareyou-gcs.readr.tw/elections-dev/2025/legislator/map/{}/recall-july/{}.json'
+    base_bucket_folder =  os.getenv('BASE_BUCKET_FOLDER_202507', 'elections-dev')
+    base_url = f'https://whoareyou-gcs.readr.tw/{base_bucket_folder}/2025/legislator/map/{}/recall-july/{}.json'
     recall_mapping = load_recall_mapping()
     constituencies, countries, counties = get_templates(base_url, recall_mapping)
 
     bucket_name = 'whoareyou-gcs.readr.tw'
-    constituency_filename = 'elections-dev/2025/legislator/map/constituency/recall-july/{}.json'
-    country_filename = 'elections-dev/2025/legislator/map/country/recall-july/country.json'
-    county_filename = 'elections-dev/2025/legislator/map/county/recall-july/{}.json'
-    iframe_filename = 'elections-dev/2025/legislator/iframe/recall-july/iframe.json'
-    mobile_filename = 'elections-dev/v2/2025/recall/district/{}.json'
+    constituency_filename = f'{base_bucket_folder}/2025/legislator/map/constituency/recall-july/{}.json'
+    country_filename = f'{base_bucket_folder}/2025/legislator/map/country/recall-july/country.json'
+    county_filename = f'{base_bucket_folder}/2025/legislator/map/county/recall-july/{}.json'
+    iframe_filename = f'{base_bucket_folder}/2025/legislator/iframe/recall-july/iframe.json'
+    mobile_filename = f'{base_bucket_folder}/v2/2025/recall/district/{}.json'
 
     process_constituency_data(bucket_name, constituency_filename, constituencies, recall_mapping, is_started, is_running, final_data)
 
@@ -595,9 +598,9 @@ def get_202507_recall_data():
 
     process_county_data(bucket_name, county_filename, counties, recall_mapping, is_started, is_running, running_data, final_data)
     
-    process_iframe(bucket_name, iframe_filename, countries, recall_mapping, is_started, is_running, running_data, final_data)
+    process_iframe(base_bucket_folder, bucket_name, iframe_filename, countries, recall_mapping, is_started, is_running, running_data, final_data)
     
-    process_mobile(bucket_name, mobile_filename, is_started, is_running, country_data)
+    process_mobile(base_bucket_folder, bucket_name, mobile_filename, is_started, is_running, country_data)
 
 def presindent2024_cec( summary, phase = 1 ):
     tks = []
