@@ -8,6 +8,7 @@ from gql import gql, Client
 from google.cloud import storage
 from datetime import datetime, timezone, timedelta
 import sqlite3
+from tools.cec_data import request_cec
 
 def president2024_realtime():
     bucket = os.environ['BUCKET']
@@ -84,6 +85,7 @@ def president2024_realtime():
     return "OK"
 
 def recall202507_realtime():
+    base_bucket_folder =  os.getenv('BASE_BUCKET_FOLDER_202507', 'elections-dev')
     gc = pygsheets.authorize(service_account_env_var = 'GDRIVE_API_CREDENTIALS')
     url = "https://docs.google.com/spreadsheets/d/1pri5X5k-_OGxOmRDQ10doKGxs9x4s3ZvU5YJ6D8YmLI/edit"
     sht = gc.open_by_url(url)
@@ -93,15 +95,42 @@ def recall202507_realtime():
         print("Exception: {}".format(type(e).__name__))
         print("Exception message: {}".format(e))
         return
+    
+    # 新增：取得 homepage_display sheet 並轉為 json，上傳到 GCS
+    try:
+        homepage_display_sheet = sht.worksheet_by_title("homepage_display")
+        homepage_display_data = homepage_display_sheet.get_all_values()
+        # 轉為 json 格式
+        if homepage_display_data:
+            homepage_display_json = {}
+            for row in homepage_display_data[1:]:
+                if not row or not row[0]:
+                    break
+                key = row[0]
+                value = row[1]
+                homepage_display_json[key] = value
+            upload_data(
+                'whoareyou-gcs.readr.tw',
+                json.dumps(homepage_display_json, ensure_ascii=False).encode('utf8'),
+                'application/json',
+                'json/202507_recall_homepage_display.json'
+            )
+            print('Upload 202507_recall_homepage_display.json successfully')
+    except Exception as e:
+        print("Exception: {}".format(type(e).__name__))
+        print("Exception message: {}".format(e))
     voting_data = { "result": [] }
-    voting_data['title'] = meta_sheet.get_value("B2")       
-    get_cec_data = meta_sheet.get_value("B3")
+    #voting_data['title'] = meta_sheet.get_value("B2")       
+    get_cec_data = meta_sheet.get_value("B2")
+    print("source = " + get_cec_data)
+    display_iframe = meta_sheet.get_value("B3")  # 讀取 display_iframe
     if get_cec_data == 'T':
-        cec_json = requests.get('https://whoareyou-gcs.readr.tw/elections-dev/2025_recall_election_data_final/iframe_data.json')
+        cec_json = requests.get(f'https://whoareyou-gcs.readr.tw/{base_bucket_folder}/2025/legislator/iframe/recall-july/iframe.json')
         if cec_json.status_code == 200:
             # 加入 source 欄位
             cec_data = json.loads(cec_json.text)
             cec_data['source'] = 'cec'
+            cec_data['display_iframe'] = display_iframe  # 加入 display_iframe
             upload_data(
                 'whoareyou-gcs.readr.tw',
                 json.dumps(cec_data, ensure_ascii=False).encode('utf8'),
@@ -112,39 +141,29 @@ def recall202507_realtime():
         else:
             print('Failed to get CEC data:', cec_json.status_code)
     else:
-        votePop_local = 'votePop.json'
-        votePop_map = {}
-        # 只有本地沒有 votePop.json 時才去下載 iframe_data.json 來補
-        if not os.path.exists(votePop_local):
-            iframe_url = 'https://whoareyou-gcs.readr.tw/elections-dev/2025_recall_election_data_final/iframe_data.json'
-            iframe_data = requests.get(iframe_url).json()
-            for item in iframe_data['result']:
-                votePop_map[item['name']] = item['votePop']
-            with open(votePop_local, 'w', encoding='utf-8') as f:
-                json.dump(votePop_map, f, ensure_ascii=False, indent=2)
-        else:
-            with open(votePop_local, 'r', encoding='utf-8') as f:
-                votePop_map = json.load(f)
         # 先從 GCS 下載 recall.db
         sqlite_local = 'recall.db'
-        download_sqlite_from_gcs('statics-editools-prod', '0727.db', sqlite_local)
+        download_sqlite_from_gcs('statics-editools-prod', '0726.db', sqlite_local)
         # 查詢 SQLite
         conn = sqlite3.connect(sqlite_local)
         cursor = conn.cursor()
-        cursor.execute('SELECT name, agreeTks, disagreeTks, ytpRate, adptVictor FROM A1')
+        cursor.execute('SELECT name, agreeTks, disagreeTks, ytpRate, adptVictor, gmeb FROM A1')
         rows = cursor.fetchall()
         conn.close()
         result = []
         for row in rows:
             name = row[0]
-            votePop = votePop_map.get(name, 0)
+            votePop = int(row[5]) if row[5] else 0  # gmeb 欄位
+            disagreeTks = int(row[2])
+            ntpRate = round(disagreeTks / votePop * 100, 1) if votePop else 0
             result.append({
                 "name": name,
                 "votePop": votePop,
                 "agreeTks": int(row[1]),
-                "disagreeTks": int(row[2]),
+                "disagreeTks": disagreeTks,
                 "ytpRate": float(row[3]),
-                "adptVictor": row[4]
+                "adptVictor": row[4],
+                "ntpRate": ntpRate
             })
         tz = timezone(timedelta(hours=+8))
         now = datetime.now(tz)
@@ -152,7 +171,8 @@ def recall202507_realtime():
         data = {
             "updatedAt": date_time,
             "result": result,
-            "source": "mnews"
+            "source": "mnews",
+            "display_iframe": display_iframe  # 加入 display_iframe
         }
         json_str = json.dumps(data, ensure_ascii=False)
         upload_data(
@@ -162,6 +182,434 @@ def recall202507_realtime():
             'json/202507_recall_iframe.json'
         )
         print('Upload recall_iframe.json successfully')
+
+def load_recall_mapping():
+    base_bucket_folder =  os.getenv('BASE_BUCKET_FOLDER_202507', 'elections-dev')
+    recallno_mapping_json = requests.get(f'https://whoareyou-gcs.readr.tw/{base_bucket_folder}/candNo-mapping/202507_recallno_mapping.json')
+    return recallno_mapping_json.json()
+
+def get_templates(base_url, recall_mapping):
+    def fetch_constituency():
+        for country, areas in recall_mapping.items():
+            for item in areas:
+                area = item['area']
+                if area == 'NA':
+                    continue
+                constituency = f'{country}{area}'
+                url = base_url.format('constituency', constituency)
+                yield country, area, requests.get(url).json()
+    def fetch_country():
+        url = base_url.format('country', 'country')
+        return 'country', requests.get(url).json()
+    def fetch_county():
+        for county in recall_mapping.keys():
+            url = base_url.format('county', county)
+            yield county, requests.get(url).json()
+    return list(fetch_constituency()), fetch_country(), list(fetch_county())
+
+def parse_202507_constituency_data(template, cec_data):
+    districts = []
+    for district in template['districts']:
+        deptCode = district['town']
+        villcode = district['vill']
+        data = None if cec_data is None or deptCode not in cec_data or villcode not in cec_data[deptCode] else cec_data[deptCode][villcode]
+        district_data = {
+            'range': district['range'],
+            'area_nickname': district['area_nickname'],
+            'county': district['county'],
+            'area': district['area'],
+            'town': district['town'],
+            'vill': district['vill'],
+            'type': district['type'],
+            'profRate': 0.0 if data is None else data['profRate'],
+            'votePop': 0 if data is None else data['gmeb'],
+            'candidates': [
+                {
+                    'candNo': candidate['candNo'],
+                    'name': candidate['name'],
+                    'party': candidate['party'],
+                    'agreeTks': 0 if data is None else data['agreeTks'],
+                    'disagreeTks': 0 if data is None else data['disagreeTks'],
+                    'agreeRate': 0.0 if data is None else data['agreeRate'],
+                    'disagreeRate': 0.0 if data is None else data['disagreeRate'],
+                    'adptVictor': '' if data is None else data['adptVictor'],
+                    'ytpRate': 0.0 if data is None else data['ytpRate'],
+                    'ntpRate': 0.0 if data is None else round(data['disagreeTks'] / data['gmeb'] * 100, 2)
+                }
+                for candidate in district['candidates']
+            ]
+        }
+        districts.append(district_data)
+    return districts
+
+def format_202507_timestamp(timestamp_str):
+    if not timestamp_str or len(timestamp_str) != 10:
+        return "2025-07-03 20:15:00"
+    
+    month = timestamp_str[:2]
+    day = timestamp_str[2:4] 
+    hour = timestamp_str[4:6]
+    minute = timestamp_str[6:8]
+    second = timestamp_str[8:10]
+    
+    return f"2025-{month}-{day} {hour}:{minute}:{second}"
+
+def find_candidate_no(recall_mapping, constituency_code, area_code):
+    candidate = 'A01'
+    
+    if constituency_code in recall_mapping:
+        for item in recall_mapping[constituency_code]:
+            if item['area'] == area_code:
+                candidate = item['no']
+                break
+    
+    return candidate
+
+def transform_cec_data_with_tbox_no(cec_data, candidate, voter_mapping=None, county_code=None):
+    if cec_data is None:
+        return None
+    
+    if voter_mapping is None:
+        voter_mapping = json.load(open('./mapping/2025/voter.json', 'r', encoding='utf-8'))
+    
+    data = {}
+    for vill_status in cec_data[candidate]:
+        dept_code = vill_status['deptCode']
+        tbox_no = str(vill_status['tboxNo']).zfill(4)
+        
+        if dept_code not in data:
+            data[dept_code] = {}
+        
+        mapping_key = f"{county_code}{dept_code}" if county_code else dept_code
+        
+        villcode = tbox_no
+        if mapping_key in voter_mapping and tbox_no in voter_mapping[mapping_key]:
+            villcode = voter_mapping[mapping_key][tbox_no]['villcode']
+        
+        data[dept_code][villcode] = vill_status
+    
+    return data
+
+def find_candidate_vote_data(candidate_votes):
+        for candidate_vote in candidate_votes:
+            if candidate_vote['deptCode'] == '000':
+                return candidate_vote
+        return None
+
+def extract_candidate_vote_info(candidate_vote):
+    return {
+        "agreeTks": candidate_vote['agreeTks'],
+        "disagreeTks": candidate_vote['disagreeTks'],
+        "agreeRate": candidate_vote['agreeRate'],
+        "disagreeRate": candidate_vote['disagreeRate'],
+        "adptVictor": candidate_vote['adptVictor'],
+        "ytpRate": candidate_vote['ytpRate'],
+        "ntpRate": round(candidate_vote['disagreeTks'] / candidate_vote['gmeb'] * 100, 2)
+    }
+
+def calculate_statistics_by_country(cec_data, recall_mapping):
+    gmeb_data = {}
+    prof_count_data = {}
+    candidate_data = []
+    
+    if cec_data is None:
+        return gmeb_data, prof_count_data, candidate_data
+    
+    for country, areas in recall_mapping.items():
+        gmeb_data[country] = 0
+        prof_count_data[country] = 0
+        
+        for item in areas:
+            area = item['area']
+            candidate = item['no']
+            
+            if area == 'NA':
+                continue
+
+            candidate_vote = find_candidate_vote_data(cec_data[candidate])
+            if candidate_vote:
+                gmeb_data[country] += candidate_vote['gmeb']
+                prof_count_data[country] += candidate_vote['prof3']
+                candidate_data.append(extract_candidate_vote_info(candidate_vote))
+    
+    return gmeb_data, prof_count_data, candidate_data
+
+def calculate_prof_rate(prof_count_data, gmeb_data):
+    total_prof_count = sum(prof_count_data.values())
+    total_gmeb = sum(gmeb_data.values())
+    
+    if total_gmeb == 0:
+        return 0.0
+    
+    return round(total_prof_count / total_gmeb * 100, 2)
+
+def update_candidate_info(candidates, candidate_data, cec_data):
+    for i, candidate in enumerate(candidates):
+        if cec_data is None:
+            set_default_candidate_values(candidate)
+        else:
+            if i < len(candidate_data):
+                update_candidate_with_data(candidate, candidate_data[i])
+            else:
+                set_default_candidate_values(candidate)
+
+def set_default_candidate_values(candidate):
+    candidate.update({
+        'agreeTks': 0,
+        'disagreeTks': 0,
+        'agreeRate': 0.0,
+        'disagreeRate': 0.0,
+        'adptVictor': '',
+        'ytpRate': 0.0,
+        'ntpRate': 0.0
+    })
+
+def update_candidate_with_data(candidate, candidate_vote_data):
+    candidate.update({
+        'agreeTks': candidate_vote_data['agreeTks'],
+        'disagreeTks': candidate_vote_data['disagreeTks'],
+        'agreeRate': candidate_vote_data['agreeRate'],
+        'disagreeRate': candidate_vote_data['disagreeRate'],
+        'adptVictor': candidate_vote_data['adptVictor'],
+        'ytpRate': candidate_vote_data['ytpRate'],
+        'ntpRate': candidate_vote_data['ntpRate']
+    })
+
+def update_summary_data(country_data_summary, candidate_data, cec_data, prof_count_data, gmeb_data):
+    country_data_summary['profRate'] = 0.0 if cec_data is None else calculate_prof_rate(prof_count_data, gmeb_data)
+    update_candidate_info(country_data_summary['candidates'], candidate_data, cec_data)
+
+def update_districts_data(country_data_districts, candidate_data, cec_data, prof_count_data, gmeb_data):
+    for district in country_data_districts:
+        county = district['county']
+        prof_count = prof_count_data.get(county, 0)
+        gmeb = gmeb_data.get(county, 0)
+        
+        district['profRate'] = 0.0 if cec_data is None else (round(prof_count / gmeb * 100, 2) if gmeb > 0 else 0.0)
+        
+        update_candidate_info(district['candidates'], candidate_data, cec_data)
+
+def update_districts_data_by_summary(summary_data, districts_data):
+    for district in districts_data:
+        for candidate in district['candidates']:
+            for summary_candidate in summary_data['candidates']:
+                if candidate['name'] == summary_candidate['name']:
+                    update_candidate_with_data(candidate, summary_candidate)
+                    break
+
+def get_updated_at(country_data, cec_data):
+    if cec_data is None:
+        return country_data['updatedAt']
+    else:
+        return format_202507_timestamp(cec_data['ST'])
+
+def process_constituency_data(bucket_name, filename, constituencies, recall_mapping, is_started, is_running, final_data):
+    voter_mapping = json.load(open('./mapping/2025/voter.json', 'r', encoding='utf-8'))
+    
+    for constituency in constituencies:
+        cec_data = final_data if is_started & (not is_running) else None
+        updatedAt = constituency[2]['updatedAt'] if cec_data is None else format_202507_timestamp(cec_data['ST'])
+        county_code = constituency[0]
+        cec_data = transform_cec_data_with_tbox_no(cec_data, find_candidate_no(recall_mapping, constituency[0], constituency[1]), voter_mapping, county_code)
+        districts = parse_202507_constituency_data(constituency[2], cec_data)
+        data = {
+            'updatedAt': updatedAt,
+            'is_running': is_running,
+            'is_started': is_started,
+            'districts': districts
+        }
+        dump_2025_recall_data(bucket_name, filename.format(constituency[0] + constituency[1]), data)
+
+def process_country_data(bucket_name, filename, countries, recall_mapping, is_started, is_running, running_data, final_data):
+    country_data = countries[1]
+    country_data_summary = country_data['summary']
+    country_data_districts = country_data['districts']
+    
+    cec_data = None if not is_started else running_data if is_running else final_data
+    
+    gmeb_data, prof_count_data, candidate_data = calculate_statistics_by_country(cec_data, recall_mapping)
+    
+    update_summary_data(country_data_summary, candidate_data, cec_data, prof_count_data, gmeb_data)
+    
+    update_districts_data_by_summary(country_data_summary, country_data_districts)
+    #update_districts_data(country_data_districts, candidate_data, cec_data, prof_count_data, gmeb_data)
+    
+    data = {
+        'updatedAt': get_updated_at(country_data, cec_data),
+        'is_running': is_running,
+        'is_started': is_started,
+        'summary': country_data_summary,
+        'districts': country_data_districts
+    }
+    
+    dump_2025_recall_data(bucket_name, filename, data)
+
+    return data
+
+def process_county_data(bucket_name, filename, counties, recall_mapping, is_started, is_running, running_data, final_data):
+    cec_data = None if not is_started else running_data if is_running else final_data
+    for county, county_data in counties:
+        updatedAt = county_data['updatedAt'] if cec_data is None else format_202507_timestamp(cec_data['ST'])
+        districts = county_data['districts']
+        for district in districts:
+            total_vote_pop = 0
+            total_prof_count = 0
+            for candidate in district['candidates']:
+                if cec_data is None:
+                    set_default_candidate_values(candidate)
+                else:
+                    candidate_vote = find_candidate_vote_data(cec_data[find_candidate_no(recall_mapping, county, district['area'])])
+                    if candidate_vote is None:
+                        set_default_candidate_values(candidate)
+                    else:
+                        total_vote_pop += candidate_vote['gmeb']
+                        total_prof_count += candidate_vote['prof3']
+                        candidate_vote['ntpRate'] = round(candidate_vote['disagreeTks'] / candidate_vote['gmeb'] * 100, 2) 
+                        update_candidate_with_data(candidate, candidate_vote)
+            district['votePop'] = total_vote_pop
+            district['profRate'] = round(total_prof_count / total_vote_pop * 100, 2) if total_vote_pop > 0 else 0.0
+        data = {
+            'updatedAt': updatedAt,
+            'is_running': is_running,
+            'is_started': is_started,
+            'districts': districts
+        }
+
+        dump_2025_recall_data(bucket_name, filename.format(county), data)
+
+def process_iframe(base_bucket_folder, bucket_name, filename, countries, recall_mapping, is_started, is_running, running_data, final_data):
+    cec_data = None if not is_started else running_data if is_running else final_data
+    country_data = countries[1]
+    
+    base_url = f'https://whoareyou-gcs.readr.tw/{base_bucket_folder}' + '/2025/legislator/map/{}/recall-july/{}.json'
+    constituencies, _, _ = get_templates(base_url, recall_mapping)
+    
+    candidate_no_to_name = {}
+    
+    for county_code, area_code, constituency_data in constituencies:
+        if constituency_data.get('districts') and constituency_data['districts']:
+            district = constituency_data['districts'][0]
+            if district.get('candidates'):
+                candidate_name = district['candidates'][0]['name']
+                for areas in recall_mapping.get(county_code, []):
+                    if areas['area'] == area_code:
+                        candidate_no = areas['no']
+                        candidate_no_to_name[candidate_no] = candidate_name
+                        break
+    
+    candidate_no_to_name['A25'] = '高虹安'
+    
+    all_candidates = set()
+    for areas in recall_mapping.values():
+        for item in areas:
+            candidate_no = item.get('no')
+            if candidate_no:
+                all_candidates.add(candidate_no)
+    
+    result = []
+    
+    for candidate_no in sorted(all_candidates):
+        candidate_name = candidate_no_to_name.get(candidate_no, f'候選人{candidate_no}')
+        
+        candidate_vote = None
+        if cec_data and candidate_no in cec_data:
+            candidate_vote = find_candidate_vote_data(cec_data[candidate_no])
+        
+        if candidate_vote:
+            result.append({
+                'name': candidate_name,
+                'votePop': candidate_vote.get('gmeb', 0),
+                'agreeTks': candidate_vote['agreeTks'],
+                'disagreeTks': candidate_vote['disagreeTks'],
+                'ytpRate': candidate_vote['ytpRate'],
+                'ntpRate': round(candidate_vote['disagreeTks'] / candidate_vote['gmeb'] * 100, 2) if candidate_vote['gmeb'] > 0 else 0.0,
+                'adptVictor': candidate_vote.get('adptVictor', '')
+            })
+        else:
+            result.append({
+                'name': candidate_name,
+                'votePop': 0,
+                'agreeTks': 0,
+                'disagreeTks': 0,
+                'ytpRate': 0.0,
+                'ntpRate': 0.0,
+                'adptVictor': ''
+            })
+    
+    data = {
+        'updatedAt': get_updated_at(country_data, cec_data),
+        'result': result
+    }
+    
+    dump_2025_recall_data(bucket_name, filename, data)
+
+def process_mobile(base_bucket_folder, bucket_name, filename, is_started, is_running, country_data):
+    district_files = [
+        'changhuaCounty', 'chiayiCity', 'chiayiCounty', 
+        'hsinchuCity', 'hsinchuCounty', 'hualienCounty',
+        'kaohsiungCity', 'keelungCity', 'kinmenCounty',
+        'lienchiangCounty', 'miaoliCounty', 'nantouCounty',
+        'newTaipeiCity', 'penghuCounty', 'pingtungCounty',
+        'taichungCity', 'tainanCity', 'taipeiCity',
+        'taitungCounty', 'taoyuanCity', 'yilanCounty', 
+        'yunlinCounty'
+    ]
+
+    base_url = f'https://whoareyou-gcs.readr.tw/{base_bucket_folder}' + '/v2/2025/recall/district/{}.json'
+    for district_file in district_files:
+        request_data = requests.get(base_url.format(district_file))
+        if request_data.status_code == 200:
+            district_data = request_data.json()
+            district_data['updatedAt'] = country_data['updatedAt']
+            district_data['is_running'] = is_running
+            district_data['is_started'] = is_started
+            for district in district_data['districts']:
+                for candidate in district['candidates']:
+                    candidate_name = candidate['name']['label']
+                    for item in country_data['summary']['candidates']:
+                        if item['name'] == candidate_name:
+                            candidate['agreeTks'] = item['agreeTks']
+                            candidate['disagreeTks'] = item['disagreeTks']
+                            candidate['agreeRate'] = item['agreeRate']
+                            candidate['disagreeRate'] = item['disagreeRate']
+                            candidate['adptVictor'] = item['adptVictor']
+                            candidate['ytpRate'] = item['ytpRate']
+                            candidate['ntpRate'] = item['ntpRate']
+                            break
+            dump_2025_recall_data(bucket_name, filename.format(district_file), district_data)
+        else:
+            print(f"Failed to fetch data for {district_file}")
+
+def get_202507_recall_data():
+    running_data = request_cec('running.json')
+    final_data = request_cec('final.json')
+    is_started = True if final_data or running_data else False
+    is_running = True if running_data and not final_data else False
+
+    if not is_started and not is_running:
+        return
+    
+    base_bucket_folder =  os.getenv('BASE_BUCKET_FOLDER_202507', 'elections-dev')
+    base_url = f'https://whoareyou-gcs.readr.tw/{base_bucket_folder}' + '/2025/legislator/map/{}/recall-july/{}.json'
+    recall_mapping = load_recall_mapping()
+    constituencies, countries, counties = get_templates(base_url, recall_mapping)
+
+    bucket_name = 'whoareyou-gcs.readr.tw'
+    constituency_filename = base_bucket_folder + '/2025/legislator/map/constituency/recall-july/{}.json'
+    country_filename = base_bucket_folder + '/2025/legislator/map/country/recall-july/country.json'
+    county_filename = base_bucket_folder + '/2025/legislator/map/county/recall-july/{}.json'
+    iframe_filename = base_bucket_folder + '/2025/legislator/iframe/recall-july/iframe.json'
+    mobile_filename = base_bucket_folder + '/v2/2025/recall/district/{}.json'
+
+    process_constituency_data(bucket_name, constituency_filename, constituencies, recall_mapping, is_started, is_running, final_data)
+
+    country_data = process_country_data(bucket_name, country_filename, countries, recall_mapping, is_started, is_running, running_data, final_data)
+
+    process_county_data(bucket_name, county_filename, counties, recall_mapping, is_started, is_running, running_data, final_data)
+    
+    process_iframe(base_bucket_folder, bucket_name, iframe_filename, countries, recall_mapping, is_started, is_running, running_data, final_data)
+    
+    process_mobile(base_bucket_folder, bucket_name, mobile_filename, is_started, is_running, country_data)
 
 def presindent2024_cec( summary, phase = 1 ):
     tks = []
@@ -248,6 +696,17 @@ def gql2json(gql_endpoint, gql_string):
     json_data = gql_client.execute(query)
     #upload_data(bucket, json.dumps(json_data, ensure_ascii=False).encode('utf8'), 'application/json', gcs_path + DEST)
     return json_data
+
+def dump_2025_recall_data(bucket_name, filename, data):
+    data_upload_source = os.getenv('DATA_UPLOAD_SOURCE', 'gcs')
+    if data_upload_source == 'gcs':
+        upload_data(bucket_name, json.dumps(data, ensure_ascii=False).encode('utf8'), 'application/json', filename)
+    elif data_upload_source == 'local':
+        with open(filename, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+            print(f"Dump {filename} successfully")
+    else:
+        print(f"Invalid data upload source: {data_upload_source}")
 
 def upload_data(bucket_name: str, data: str, content_type: str, destination_blob_name: str):
     '''Uploads a file to the bucket.'''
