@@ -13,7 +13,7 @@ gql_endpoint = os.environ['GQL_URL']
 BUCKET = os.environ['BUCKET']  
 ENV_FOLDER = os.environ['ENV_FOLDER']
 
-def update_person_election(year: str, election_type:str):
+def update_person_election(year: str, election_type:str, gen_term_office: bool=False):
     '''
         Give the year of election, and update the person election result into WHORU database
     '''
@@ -76,7 +76,7 @@ def update_person_election(year: str, election_type:str):
             show_update_person(result, election_type)
             
             ### If the candVictor==True, we need to update Person Organization
-            if candVictor==True:
+            if candVictor==True and gen_term_office==True:
                 role, organization, term_office = '', '', {}
                 person_id = info['person_id']
                 is_vice   = info['is_vice']
@@ -101,55 +101,129 @@ def update_person_election(year: str, election_type:str):
                 show_create_personOrganization(result)
     return True
 
-def update_party_election(year: str):
+def update_party_election(year: str, gen_term_office: bool=False):
     '''
         Give the year of election, and update the party election result into WHORU database
+        You should parse final_A json to get the person candidate winner.
     '''
     v2_url = f'https://{BUCKET}/{ENV_FOLDER}/v2/{year}/legislator/party/all.json'
-    query_string = query.get_party_string(year)
+    final_A_url = f'https://{BUCKET}/{ENV_FOLDER}/cec-data/final_A.json'
 
-    ### Catch the v2 json, which records all the election result
+    ### Request v2 json, which records all the election result for organization election
     raw_data = request_url(v2_url)
     if raw_data==None:
         print("Can't get v2 party json")
         return False
     v2_data = raw_data['parties']
 
-    ### Create the mapping table for id and candNo
-    gql_party = gql_fetch(gql_endpoint, query_string)
-    mapping = {} # {candNo: [id]}
-    for data in gql_party['organizationsElections']:
-        id     = str(data['id'])
-        candNo = str(data['number'])
-        mapping[candNo] = id
+    ### Request final_A json, and the winner of person elections are inside M4 patyInfo
+    final_A = request_url(final_A_url)
+    if final_A==None:
+        print("Can't get final_A json")
+        return False
+    patyInfo = final_A['M4'].get('patyInfo', [])
+
+    ### Create the mapping table for organization as party
+    query_string = query.get_party_oe_string(year)
+    gql_party_oe = gql_fetch(gql_endpoint, query_string)
+    mapping_party_oeid = {}   # oeid = organization election id
+    mapping_party_oid  = {}   # oid  = organization id
+    for data in gql_party_oe['organizationsElections']:
+        party_oeid = str(data['id'])
+        party_oid  = str(data['organization_id']['id'])
+        candNo     = str(data['number'])
+        mapping_party_oeid[candNo] = party_oeid
+        mapping_party_oid[candNo]  = party_oid
+
+    ### Create the mapping table for person, mapping relationship: partyId->legislatorOrder->Info
+    query_string = query.get_party_pe_string(year)
+    gql_party_pe = gql_fetch(gql_endpoint, query_string)
+    mapping_person = {}
+    for data in gql_party_pe['personElections']:
+        election_id   = str(data['id'])
+        party_oid     = str(data['party']['id'])
+        person_id     = str(data['person_id']['id'])
+        legislatorOrder = data['legislatoratlarge_number']
+        subOrganization = mapping_person.setdefault(party_oid, {})
+        subOrganization[legislatorOrder] = {
+            'election_id': election_id,
+            'person_id': person_id
+        }
+
+    ### Get the organization informations
+    gql_organizations = gql_fetch(gql_endpoint, query.gql_organizations_string)
+    organizations_table = {data['name']: data['id'] for data in gql_organizations['organizations']}
     
-    ### Parse the data in v2
+    ### Update party election
     for data in v2_data:
         candNo       = data['candNo']
         tks          = data['tks']
         tksRate1     = data['tksRate1']
         tksRate2     = data['tksRate2']
-        seats        = data['seats']
-        id           = mapping.get(str(candNo), None)
-        if id!=None:
+        seats        = int(data['seats'])
+        party_oeid = mapping_party_oeid.get(str(candNo), None)
+        if party_oeid != None:
             gql_variable = variable.UpdatePartyElectionVariable(
                 votes_obtained_number     = f'{tks}',
                 first_obtained_number     = f'{tksRate1}%',
                 second_obtained_number    = f'{tksRate2}%',
                 seats                     = f'{seats}',
-                id                        = id
+                id                        = party_oeid
             ).to_json()
             result = gql_update(gql_endpoint, query.gql_update_party, gql_variable)
             show_update_party(result)
+
+    ### Get the result from final_A, update person election and add term office 
+    role, organization, term_office = '立委', '立法院', variable.termOffice_legislator_2024
+    organization_id = organizations_table[organization]
+    for party in patyInfo:
+        patyNo    = party.get('patyNo', None)
+        candInfo  = party.get('candInfo', [])
+        party_oid = mapping_party_oid.get(str(patyNo), None)
+        for cand in candInfo:
+            candNo    = cand.get('candNo', None)
+            is_victor = (cand.get('victor', '')=='*') or (cand.get('victor', '')=='!')
+            if candNo!=None and is_victor==True:
+                person_info = mapping_person.get(party_oid, {}).get(candNo, {})
+                if person_info:
+                    person_id   = person_info.get('person_id', None)
+                    election_id = person_info.get('election_id', None)
+                    if person_id and election_id:
+                        ### Update person election
+                        gql_variable =variable.UpdatePersonElectionOnlyElectedVariable(
+                            elected = True, 
+                            id      = election_id
+                        ).to_json()
+                        result = gql_update(gql_endpoint, query.gql_update_person, gql_variable)
+                        show_update_person(result, election_type='party')
+
+                        ### Add term office
+                        if gen_term_office==True:
+                            gql_varible = variable.CreatePersonOrganizationVariable(
+                                person_id       = person_id,
+                                organization_id = organization_id,
+                                election_id     = election_id,
+                                role   = role,
+                                source = '中選會',
+                                term_office = term_office
+                            ).to_json()
+                            result = gql_update(gql_endpoint, query.gql_create_personOrganization, gql_varible)
+                            show_create_personOrganization(result)
+                else:
+                    print(f'Missing person_info for party_id: {party_oid}, order: {candNo}')
     return True
 
-def update_normal_election(year: str):
+def update_normal_election(year: str, gen_term_office: bool=False):
     '''
         Give the year of election, and update the normal election result into WHORU database
     '''
     v2_districts = hp.v2_electionDistricts
     gql_normal = gql_fetch(gql_endpoint, query.get_normal_string(year))
     mapping_normal_eid = create_normal_eid(gql_normal)
+
+    ### Get the organization informations
+    gql_organizations = gql_fetch(gql_endpoint, query.gql_organizations_string)
+    organizations_table = {data['name']: data['id'] for data in gql_organizations['organizations']}
 
     for county_code, county_name in v2_districts.items():
         v2_url = f'https://{BUCKET}/{ENV_FOLDER}/v2/{year}/legislator/district/{county_name}.json'
@@ -167,16 +241,32 @@ def update_normal_election(year: str):
                 tks         = candidate['tks']
                 tksRate     = candidate['tksRate']
                 candVictor  = (candidate['candVictor']==True)
-                eid = mapping_normal_eid.get(county_code, {}).get(area_code.zfill(2), {}).get(str(candNo), None)
-                if eid != None:
+                candInfo    = mapping_normal_eid.get(county_code, {}).get(area_code.zfill(2), {}).get(str(candNo), {})
+                election_id = candInfo.get('election_id', None)
+                person_id   = candInfo.get('person_id', None)
+                if election_id != None:
                     gql_variable = variable.UpdatePersonElectionVariable(
                         votes_obtained_number     = f'{tks}',
                         votes_obtained_percentage = f'{tksRate}%',
                         elected                   = candVictor,
-                        id                        = eid
+                        id                        = election_id
                     ).to_json()
                     result = gql_update(gql_endpoint, query.gql_update_person, gql_variable)
                     show_update_person(result, 'normal')
+
+                if candVictor==True and gen_term_office==True and election_id!=None and person_id!=None:
+                    role, organization, term_office = '立委', '立法院', variable.termOffice_legislator_2024
+                    organization_id = organizations_table[organization]
+                    gql_varible = variable.CreatePersonOrganizationVariable(
+                        person_id = person_id,
+                        organization_id = organization_id,
+                        election_id = election_id,
+                        role = role,
+                        source = '中選會',
+                        term_office = term_office
+                    ).to_json()
+                    result = gql_update(gql_endpoint, query.gql_create_personOrganization, gql_varible)
+                    show_create_personOrganization(result)
     return True
 
 '''
@@ -203,13 +293,17 @@ def create_normal_eid(gql_constituency):
     pattern = r'\d+'  ###用來找選區編號
     for data in person_data:
         electionId = data['id']
+        personId   = data['person_id']['id']
         candNo     = data['number']
         city_code   = reverse_city_mapping[data['electoral_district']['city']]
         area_code   = re.findall(pattern, data['electoral_district']['name'])[0]
 
         subCity = mapping_normal_eid.setdefault(city_code, {})
         subArea = subCity.setdefault(area_code, {})
-        subArea[candNo] = electionId
+        subArea[candNo] = {
+            'election_id': electionId,
+            'person_id': personId
+        }
     return mapping_normal_eid
 
 def show_update_person(result, election_type:str):
