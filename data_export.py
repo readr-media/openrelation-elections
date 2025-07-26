@@ -286,7 +286,24 @@ def transform_cec_data_with_tbox_no(cec_data, candidate, voter_mapping=None, cou
         if mapping_key in voter_mapping and tbox_no in voter_mapping[mapping_key]:
             villcode = voter_mapping[mapping_key][tbox_no]['villcode']
         
-        data[dept_code][villcode] = vill_status
+        if villcode in data[dept_code]:
+            existing = data[dept_code][villcode]
+            existing['agreeTks'] += vill_status.get('agreeTks', 0)
+            existing['disagreeTks'] += vill_status.get('disagreeTks', 0)
+            existing['gmeb'] += vill_status.get('gmeb', 0)
+            existing['prof3'] += vill_status.get('prof3', 0)
+            total_votes = existing['agreeTks'] + existing['disagreeTks']
+            if total_votes > 0:
+                existing['agreeRate'] = round(existing['agreeTks'] / total_votes * 100, 2)
+                existing['disagreeRate'] = round(existing['disagreeTks'] / total_votes * 100, 2)
+            if existing['gmeb'] > 0:
+                existing['profRate'] = round(existing['prof3'] / existing['gmeb'] * 100, 2)
+                existing['ytpRate'] = round(total_votes / existing['gmeb'] * 100, 2)
+            for key in vill_status:
+                if key not in ['agreeTks', 'disagreeTks', 'gmeb', 'prof3', 'agreeRate', 'disagreeRate', 'profRate', 'ytpRate']:
+                    existing[key] = vill_status[key]
+        else:
+            data[dept_code][villcode] = vill_status
     
     return data
 
