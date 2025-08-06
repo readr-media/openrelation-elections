@@ -143,7 +143,7 @@ def recall202507_realtime():
     else:
         # 先從 GCS 下載 recall.db
         sqlite_local = 'recall.db'
-        download_sqlite_from_gcs('statics-editools-prod', '0726.db', sqlite_local)
+        download_sqlite_from_gcs('statics-editools-prod', '0823.db', sqlite_local)
         # 查詢 SQLite
         conn = sqlite3.connect(sqlite_local)
         cursor = conn.cursor()
@@ -179,7 +179,7 @@ def recall202507_realtime():
             'whoareyou-gcs.readr.tw',
             json_str.encode('utf8'),
             'application/json',
-            'json/202507_recall_iframe.json'
+            'json/202508_recall_iframe.json'
         )
         print('Upload recall_iframe.json successfully')
 
