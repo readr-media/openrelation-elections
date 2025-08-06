@@ -144,13 +144,19 @@ def recall202507_realtime():
         # 先從 GCS 下載 recall.db
         sqlite_local = 'recall.db'
         download_sqlite_from_gcs('statics-editools-prod', '0823.db', sqlite_local)
-        # 查詢 SQLite
+        # 查詢 SQLite - B1 table (原本的 A1)
         conn = sqlite3.connect(sqlite_local)
         cursor = conn.cursor()
-        cursor.execute('SELECT name, agreeTks, disagreeTks, ytpRate, adptVictor, gmeb FROM A1')
+        cursor.execute('SELECT name, agreeTks, disagreeTks, ytpRate, adptVictor, gmeb FROM B1')
         rows = cursor.fetchall()
+        
+        # 查詢 SQLite - F1 table (referendum)
+        cursor.execute('SELECT citycode, cityname, areaCode, party, name, agreeTks, ytpRate, disagreeTks, adptVictor, fnum, gmeb, tboxTot, tboxRcv FROM F1')
+        referendum_rows = cursor.fetchall()
         conn.close()
+        
         result = []
+        # 處理 B1 table 資料 (原本的 recall 資料)
         for row in rows:
             name = row[0]
             votePop = int(row[5]) if row[5] else 0  # gmeb 欄位
@@ -165,6 +171,43 @@ def recall202507_realtime():
                 "adptVictor": row[4],
                 "ntpRate": ntpRate
             })
+        
+        # 處理 F1 table 資料 (referendum 資料)
+        for row in referendum_rows:
+            citycode = row[0]
+            cityname = row[1]
+            areaCode = row[2]
+            party = row[3]
+            name = row[4]
+            agreeTks = int(row[5]) if row[5] else 0
+            ytpRate = float(row[6]) if row[6] else 0.0
+            disagreeTks = int(row[7]) if row[7] else 0
+            adptVictor = row[8]
+            fnum = int(row[9]) if row[9] else 0
+            gmeb = int(row[10]) if row[10] else 0
+            tboxTot = int(row[11]) if row[11] else 0
+            tboxRcv = int(row[12]) if row[12] else 0
+            
+            # 計算 ntpRate
+            ntpRate = round(disagreeTks / gmeb * 100, 1) if gmeb else 0
+            
+            result.append({
+                "name": name,
+                "votePop": gmeb,
+                "agreeTks": agreeTks,
+                "disagreeTks": disagreeTks,
+                "ytpRate": ytpRate,
+                "adptVictor": adptVictor,
+                "ntpRate": ntpRate,
+                "citycode": citycode,
+                "cityname": cityname,
+                "areaCode": areaCode,
+                "party": party,
+                "fnum": fnum,
+                "tboxTot": tboxTot,
+                "tboxRcv": tboxRcv
+            })
+        
         tz = timezone(timedelta(hours=+8))
         now = datetime.now(tz)
         date_time = now.strftime("%Y-%m-%d %H:%M:%S")
