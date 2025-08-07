@@ -156,6 +156,7 @@ def recall202507_realtime():
         conn.close()
         
         result = []
+        referendum_result = []
         # 處理 B1 table 資料 (原本的 recall 資料)
         for row in rows:
             name = row[0]
@@ -191,7 +192,7 @@ def recall202507_realtime():
             # 計算 ntpRate
             ntpRate = round(disagreeTks / gmeb * 100, 1) if gmeb else 0
             
-            result.append({
+            referendum_result.append({
                 "name": name,
                 "votePop": gmeb,
                 "agreeTks": agreeTks,
@@ -214,6 +215,7 @@ def recall202507_realtime():
         data = {
             "updatedAt": date_time,
             "result": result,
+            "referendum_result": referendum_result,
             "source": "mnews",
             "display_iframe": display_iframe  # 加入 display_iframe
         }
