@@ -674,15 +674,21 @@ def get_202507_recall_data():
     iframe_filename = f'{base_bucket_folder}/2025/legislator/iframe/{recall_folder}/iframe.json'
     mobile_filename = '/v2/2025/recall/district/{}.json'
 
-    process_constituency_data(bucket_name, constituency_filename, constituencies, recall_mapping, is_started, is_running, final_data)
+    export_type = os.getenv('RECALL_EXPORT_TYPE', 'constituency,country,county,iframe,mobile').split(',')
+    if 'constituency' in export_type:
+        process_constituency_data(bucket_name, constituency_filename, constituencies, recall_mapping, is_started, is_running, final_data)
 
-    country_data = process_country_data(bucket_name, country_filename, countries, recall_mapping, is_started, is_running, running_data, final_data)
+    if 'country' in export_type:
+        country_data = process_country_data(bucket_name, country_filename, countries, recall_mapping, is_started, is_running, running_data, final_data)
 
-    process_county_data(bucket_name, county_filename, counties, recall_mapping, is_started, is_running, running_data, final_data)
+    if 'county' in export_type:
+        process_county_data(bucket_name, county_filename, counties, recall_mapping, is_started, is_running, running_data, final_data)
     
-    process_iframe(base_bucket_folder, bucket_name, iframe_filename, countries, recall_mapping, is_started, is_running, running_data, final_data)
+    if 'iframe' in export_type:
+        process_iframe(base_bucket_folder, bucket_name, iframe_filename, countries, recall_mapping, is_started, is_running, running_data, final_data)
     
-    process_mobile(base_bucket_folder, bucket_name, mobile_filename, is_started, is_running, country_data)
+    if 'mobile' in export_type:
+        process_mobile(base_bucket_folder, bucket_name, mobile_filename, is_started, is_running, country_data)
 
 def presindent2024_cec( summary, phase = 1 ):
     tks = []
