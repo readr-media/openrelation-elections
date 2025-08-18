@@ -231,7 +231,8 @@ def recall202507_realtime():
 
 def load_recall_mapping():
     base_bucket_folder =  os.getenv('ENV_FOLDER', 'elections-dev')
-    recallno_mapping_json = requests.get(f'https://whoareyou-gcs.readr.tw/{base_bucket_folder}/candNo-mapping/202507_recallno_mapping.json')
+    recallno_mapping_filename = os.getenv('RECALLNO_MAPPING_FILENAME', '2025_recallno_mapping.json')
+    recallno_mapping_json = requests.get(f'https://whoareyou-gcs.readr.tw/{base_bucket_folder}/candNo-mapping/{recallno_mapping_filename}')
     return recallno_mapping_json.json()
 
 def get_templates(base_url, recall_mapping):
