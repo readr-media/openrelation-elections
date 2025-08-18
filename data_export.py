@@ -235,6 +235,13 @@ def load_recall_mapping():
     recallno_mapping_json = requests.get(f'https://whoareyou-gcs.readr.tw/{base_bucket_folder}/candNo-mapping/{recallno_mapping_filename}')
     return recallno_mapping_json.json()
 
+def load_voter_mapping():
+    base_bucket_folder =  os.getenv('ENV_FOLDER', 'elections-dev')
+    voter_mapping_filename = os.getenv('VOTER_MAPPING_FILENAME', '2025/voter.json')
+    base_url = f'https://whoareyou-gcs.readr.tw/{base_bucket_folder}/{voter_mapping_filename}'
+    voter_mapping_json = requests.get(base_url).json()
+    return voter_mapping_json
+
 def get_templates(base_url, recall_mapping):
     def fetch_constituency():
         for country, areas in recall_mapping.items():
@@ -317,7 +324,7 @@ def transform_cec_data_with_tbox_no(cec_data, candidate, voter_mapping=None, cou
         return None
     
     if voter_mapping is None:
-        voter_mapping = json.load(open('./mapping/2025/voter.json', 'r', encoding='utf-8'))
+        voter_mapping = load_voter_mapping()
     
     data = {}
     for vill_status in cec_data[candidate]:
@@ -468,7 +475,7 @@ def get_updated_at(country_data, cec_data):
         return format_202507_timestamp(cec_data['ST'])
 
 def process_constituency_data(bucket_name, filename, constituencies, recall_mapping, is_started, is_running, final_data):
-    voter_mapping = json.load(open('./mapping/2025/voter.json', 'r', encoding='utf-8'))
+    voter_mapping = load_voter_mapping()
     
     for constituency in constituencies:
         cec_data = final_data if is_started & (not is_running) else None
