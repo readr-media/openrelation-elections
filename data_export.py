@@ -85,7 +85,8 @@ def president2024_realtime():
     return "OK"
 
 def recall202507_realtime():
-    base_bucket_folder =  os.getenv('BASE_BUCKET_FOLDER_202507', 'elections-dev')
+    base_bucket_folder =  os.getenv('ENV_FOLDER', 'elections-dev')
+    recall_folder = os.getenv('RECALL_FOLDER', 'recall-july')
     gc = pygsheets.authorize(service_account_env_var = 'GDRIVE_API_CREDENTIALS')
     url = "https://docs.google.com/spreadsheets/d/1pri5X5k-_OGxOmRDQ10doKGxs9x4s3ZvU5YJ6D8YmLI/edit"
     sht = gc.open_by_url(url)
@@ -125,7 +126,7 @@ def recall202507_realtime():
     print("source = " + get_cec_data)
     display_iframe = meta_sheet.get_value("B3")  # 讀取 display_iframe
     if get_cec_data == 'T':
-        cec_json = requests.get(f'https://whoareyou-gcs.readr.tw/{base_bucket_folder}/2025/legislator/iframe/recall-july/iframe.json')
+        cec_json = requests.get(f'https://whoareyou-gcs.readr.tw/{base_bucket_folder}/2025/legislator/iframe/{recall_folder}/iframe.json')
         if cec_json.status_code == 200:
             # 加入 source 欄位
             cec_data = json.loads(cec_json.text)
@@ -229,7 +230,7 @@ def recall202507_realtime():
         print('Upload recall_iframe.json successfully')
 
 def load_recall_mapping():
-    base_bucket_folder =  os.getenv('BASE_BUCKET_FOLDER_202507', 'elections-dev')
+    base_bucket_folder =  os.getenv('ENV_FOLDER', 'elections-dev')
     recallno_mapping_json = requests.get(f'https://whoareyou-gcs.readr.tw/{base_bucket_folder}/candNo-mapping/202507_recallno_mapping.json')
     return recallno_mapping_json.json()
 
@@ -542,8 +543,9 @@ def process_county_data(bucket_name, filename, counties, recall_mapping, is_star
 def process_iframe(base_bucket_folder, bucket_name, filename, countries, recall_mapping, is_started, is_running, running_data, final_data):
     cec_data = None if not is_started else running_data if is_running else final_data
     country_data = countries[1]
+    recall_folder = os.getenv('RECALL_FOLDER', 'recall-july')
     
-    base_url = f'https://whoareyou-gcs.readr.tw/{base_bucket_folder}' + '/2025/legislator/map/{}/recall-july/{}.json'
+    base_url = f'https://whoareyou-gcs.readr.tw/{base_bucket_folder}/2025/legislator/map/{{}}/{recall_folder}/{{}}.json'
     constituencies, _, _ = get_templates(base_url, recall_mapping)
     
     candidate_no_to_name = {}
@@ -651,17 +653,18 @@ def get_202507_recall_data():
     if not is_started and not is_running:
         return
     
-    base_bucket_folder =  os.getenv('BASE_BUCKET_FOLDER_202507', 'elections-dev')
-    base_url = f'https://whoareyou-gcs.readr.tw/{base_bucket_folder}' + '/2025/legislator/map/{}/recall-july/{}.json'
+    base_bucket_folder =  os.getenv('ENV_FOLDER', 'elections-dev')
+    recall_folder = os.getenv('RECALL_FOLDER', 'recall-july')
+    base_url = f'https://whoareyou-gcs.readr.tw/{base_bucket_folder}/2025/legislator/map/{{}}/{recall_folder}/{{}}.json'
     recall_mapping = load_recall_mapping()
     constituencies, countries, counties = get_templates(base_url, recall_mapping)
 
     bucket_name = 'whoareyou-gcs.readr.tw'
-    constituency_filename = base_bucket_folder + '/2025/legislator/map/constituency/recall-july/{}.json'
-    country_filename = base_bucket_folder + '/2025/legislator/map/country/recall-july/country.json'
-    county_filename = base_bucket_folder + '/2025/legislator/map/county/recall-july/{}.json'
-    iframe_filename = base_bucket_folder + '/2025/legislator/iframe/recall-july/iframe.json'
-    mobile_filename = base_bucket_folder + '/v2/2025/recall/district/{}.json'
+    constituency_filename = f'{base_bucket_folder}/2025/legislator/map/constituency/{recall_folder}/{{}}.json'
+    country_filename = f'{base_bucket_folder}/2025/legislator/map/country/{recall_folder}/country.json'
+    county_filename = f'{base_bucket_folder}/2025/legislator/map/county/{recall_folder}/{{}}.json'
+    iframe_filename = f'{base_bucket_folder}/2025/legislator/iframe/{recall_folder}/iframe.json'
+    mobile_filename = '/v2/2025/recall/district/{}.json'
 
     process_constituency_data(bucket_name, constituency_filename, constituencies, recall_mapping, is_started, is_running, final_data)
 
