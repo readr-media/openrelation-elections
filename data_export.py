@@ -352,7 +352,7 @@ def transform_cec_data_with_tbox_no(cec_data, candidate, voter_mapping=None, cou
                 existing['disagreeRate'] = round(existing['disagreeTks'] / total_votes * 100, 2)
             if existing['gmeb'] > 0:
                 existing['profRate'] = round(existing['prof3'] / existing['gmeb'] * 100, 2)
-                existing['ytpRate'] = round(total_votes / existing['gmeb'] * 100, 2)
+                existing['ytpRate'] = round(existing['agreeTks'] / existing['gmeb'] * 100, 2)
             for key in vill_status:
                 if key not in ['agreeTks', 'disagreeTks', 'gmeb', 'prof3', 'agreeRate', 'disagreeRate', 'profRate', 'ytpRate']:
                     existing[key] = vill_status[key]
