@@ -460,8 +460,13 @@ def update_districts_data(country_data_districts, candidate_data, cec_data, prof
         
         update_candidate_info(district['candidates'], candidate_data, cec_data)
 
-def update_districts_data_by_summary(summary_data, districts_data):
+def update_districts_data_by_summary(summary_data, districts_data, prof_count_data, gmeb_data):
     for district in districts_data:
+        county = district['county']
+        prof_count = prof_count_data.get(county, 0)
+        gmeb = gmeb_data.get(county, 0)
+        district['profRate'] = round(prof_count / gmeb * 100, 2) if gmeb > 0 else 0.0
+        
         for candidate in district['candidates']:
             for summary_candidate in summary_data['candidates']:
                 if candidate['name'] == summary_candidate['name']:
@@ -502,8 +507,7 @@ def process_country_data(bucket_name, filename, countries, recall_mapping, is_st
     
     update_summary_data(country_data_summary, candidate_data, cec_data, prof_count_data, gmeb_data)
     
-    update_districts_data_by_summary(country_data_summary, country_data_districts)
-    #update_districts_data(country_data_districts, candidate_data, cec_data, prof_count_data, gmeb_data)
+    update_districts_data_by_summary(country_data_summary, country_data_districts, prof_count_data, gmeb_data)
     
     data = {
         'updatedAt': get_updated_at(country_data, cec_data),
