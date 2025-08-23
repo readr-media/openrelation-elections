@@ -85,7 +85,8 @@ def president2024_realtime():
     return "OK"
 
 def recall202507_realtime():
-    base_bucket_folder =  os.getenv('BASE_BUCKET_FOLDER_202507', 'elections-dev')
+    base_bucket_folder =  os.getenv('ENV_FOLDER', 'elections-dev')
+    recall_folder = os.getenv('RECALL_FOLDER', 'recall-july')
     gc = pygsheets.authorize(service_account_env_var = 'GDRIVE_API_CREDENTIALS')
     url = "https://docs.google.com/spreadsheets/d/1pri5X5k-_OGxOmRDQ10doKGxs9x4s3ZvU5YJ6D8YmLI/edit"
     sht = gc.open_by_url(url)
@@ -125,7 +126,7 @@ def recall202507_realtime():
     print("source = " + get_cec_data)
     display_iframe = meta_sheet.get_value("B3")  # 讀取 display_iframe
     if get_cec_data == 'T':
-        cec_json = requests.get(f'https://whoareyou-gcs.readr.tw/{base_bucket_folder}/2025/legislator/iframe/recall-july/iframe.json')
+        cec_json = requests.get(f'https://whoareyou-gcs.readr.tw/{base_bucket_folder}/2025/legislator/iframe/{recall_folder}/iframe.json')
         if cec_json.status_code == 200:
             # 加入 source 欄位
             cec_data = json.loads(cec_json.text)
@@ -229,9 +230,17 @@ def recall202507_realtime():
         print('Upload recall_iframe.json successfully')
 
 def load_recall_mapping():
-    base_bucket_folder =  os.getenv('BASE_BUCKET_FOLDER_202507', 'elections-dev')
-    recallno_mapping_json = requests.get(f'https://whoareyou-gcs.readr.tw/{base_bucket_folder}/candNo-mapping/202507_recallno_mapping.json')
+    base_bucket_folder =  os.getenv('ENV_FOLDER', 'elections-dev')
+    recallno_mapping_filename = os.getenv('RECALLNO_MAPPING_FILENAME', '2025_recallno_mapping.json')
+    recallno_mapping_json = requests.get(f'https://whoareyou-gcs.readr.tw/{base_bucket_folder}/candNo-mapping/{recallno_mapping_filename}')
     return recallno_mapping_json.json()
+
+def load_voter_mapping():
+    base_bucket_folder =  os.getenv('ENV_FOLDER', 'elections-dev')
+    voter_mapping_filename = os.getenv('VOTER_MAPPING_FILENAME', '2025/voter.json')
+    base_url = f'https://whoareyou-gcs.readr.tw/{base_bucket_folder}/{voter_mapping_filename}'
+    voter_mapping_json = requests.get(base_url).json()
+    return voter_mapping_json
 
 def get_templates(base_url, recall_mapping):
     def fetch_constituency():
@@ -315,7 +324,7 @@ def transform_cec_data_with_tbox_no(cec_data, candidate, voter_mapping=None, cou
         return None
     
     if voter_mapping is None:
-        voter_mapping = json.load(open('./mapping/2025/voter.json', 'r', encoding='utf-8'))
+        voter_mapping = load_voter_mapping()
     
     data = {}
     for vill_status in cec_data[candidate]:
@@ -343,7 +352,7 @@ def transform_cec_data_with_tbox_no(cec_data, candidate, voter_mapping=None, cou
                 existing['disagreeRate'] = round(existing['disagreeTks'] / total_votes * 100, 2)
             if existing['gmeb'] > 0:
                 existing['profRate'] = round(existing['prof3'] / existing['gmeb'] * 100, 2)
-                existing['ytpRate'] = round(total_votes / existing['gmeb'] * 100, 2)
+                existing['ytpRate'] = round(existing['agreeTks'] / existing['gmeb'] * 100, 2)
             for key in vill_status:
                 if key not in ['agreeTks', 'disagreeTks', 'gmeb', 'prof3', 'agreeRate', 'disagreeRate', 'profRate', 'ytpRate']:
                     existing[key] = vill_status[key]
@@ -451,8 +460,13 @@ def update_districts_data(country_data_districts, candidate_data, cec_data, prof
         
         update_candidate_info(district['candidates'], candidate_data, cec_data)
 
-def update_districts_data_by_summary(summary_data, districts_data):
+def update_districts_data_by_summary(summary_data, districts_data, prof_count_data, gmeb_data):
     for district in districts_data:
+        county = district['county']
+        prof_count = prof_count_data.get(county, 0)
+        gmeb = gmeb_data.get(county, 0)
+        district['profRate'] = round(prof_count / gmeb * 100, 2) if gmeb > 0 else 0.0
+        
         for candidate in district['candidates']:
             for summary_candidate in summary_data['candidates']:
                 if candidate['name'] == summary_candidate['name']:
@@ -466,7 +480,7 @@ def get_updated_at(country_data, cec_data):
         return format_202507_timestamp(cec_data['ST'])
 
 def process_constituency_data(bucket_name, filename, constituencies, recall_mapping, is_started, is_running, final_data):
-    voter_mapping = json.load(open('./mapping/2025/voter.json', 'r', encoding='utf-8'))
+    voter_mapping = load_voter_mapping()
     
     for constituency in constituencies:
         cec_data = final_data if is_started & (not is_running) else None
@@ -493,8 +507,7 @@ def process_country_data(bucket_name, filename, countries, recall_mapping, is_st
     
     update_summary_data(country_data_summary, candidate_data, cec_data, prof_count_data, gmeb_data)
     
-    update_districts_data_by_summary(country_data_summary, country_data_districts)
-    #update_districts_data(country_data_districts, candidate_data, cec_data, prof_count_data, gmeb_data)
+    update_districts_data_by_summary(country_data_summary, country_data_districts, prof_count_data, gmeb_data)
     
     data = {
         'updatedAt': get_updated_at(country_data, cec_data),
@@ -542,8 +555,9 @@ def process_county_data(bucket_name, filename, counties, recall_mapping, is_star
 def process_iframe(base_bucket_folder, bucket_name, filename, countries, recall_mapping, is_started, is_running, running_data, final_data):
     cec_data = None if not is_started else running_data if is_running else final_data
     country_data = countries[1]
+    recall_folder = os.getenv('RECALL_FOLDER', 'recall-july')
     
-    base_url = f'https://whoareyou-gcs.readr.tw/{base_bucket_folder}' + '/2025/legislator/map/{}/recall-july/{}.json'
+    base_url = f'https://whoareyou-gcs.readr.tw/{base_bucket_folder}/2025/legislator/map/{{}}/{recall_folder}/{{}}.json'
     constituencies, _, _ = get_templates(base_url, recall_mapping)
     
     candidate_no_to_name = {}
@@ -617,7 +631,8 @@ def process_mobile(base_bucket_folder, bucket_name, filename, is_started, is_run
         'yunlinCounty'
     ]
 
-    base_url = f'https://whoareyou-gcs.readr.tw/{base_bucket_folder}' + '/v2/2025/recall/district/{}.json'
+    recall_folder = os.getenv('RECALL_FOLDER', 'recall-july')
+    base_url = f'https://whoareyou-gcs.readr.tw/{base_bucket_folder}/v2/2025/{recall_folder}/district/{{}}.json'
     for district_file in district_files:
         request_data = requests.get(base_url.format(district_file))
         if request_data.status_code == 200:
@@ -651,27 +666,34 @@ def get_202507_recall_data():
     if not is_started and not is_running:
         return
     
-    base_bucket_folder =  os.getenv('BASE_BUCKET_FOLDER_202507', 'elections-dev')
-    base_url = f'https://whoareyou-gcs.readr.tw/{base_bucket_folder}' + '/2025/legislator/map/{}/recall-july/{}.json'
+    base_bucket_folder =  os.getenv('ENV_FOLDER', 'elections-dev')
+    recall_folder = os.getenv('RECALL_FOLDER', 'recall-july')
+    base_url = f'https://whoareyou-gcs.readr.tw/{base_bucket_folder}/2025/legislator/map/{{}}/{recall_folder}/{{}}.json'
     recall_mapping = load_recall_mapping()
     constituencies, countries, counties = get_templates(base_url, recall_mapping)
 
     bucket_name = 'whoareyou-gcs.readr.tw'
-    constituency_filename = base_bucket_folder + '/2025/legislator/map/constituency/recall-july/{}.json'
-    country_filename = base_bucket_folder + '/2025/legislator/map/country/recall-july/country.json'
-    county_filename = base_bucket_folder + '/2025/legislator/map/county/recall-july/{}.json'
-    iframe_filename = base_bucket_folder + '/2025/legislator/iframe/recall-july/iframe.json'
-    mobile_filename = base_bucket_folder + '/v2/2025/recall/district/{}.json'
+    constituency_filename = f'{base_bucket_folder}/2025/legislator/map/constituency/{recall_folder}/{{}}.json'
+    country_filename = f'{base_bucket_folder}/2025/legislator/map/country/{recall_folder}/country.json'
+    county_filename = f'{base_bucket_folder}/2025/legislator/map/county/{recall_folder}/{{}}.json'
+    iframe_filename = f'{base_bucket_folder}/2025/legislator/iframe/{recall_folder}/iframe.json'
+    mobile_filename = f'{base_bucket_folder}/v2/2025/{recall_folder}/district/{{}}.json'
 
-    process_constituency_data(bucket_name, constituency_filename, constituencies, recall_mapping, is_started, is_running, final_data)
+    export_type = os.getenv('RECALL_EXPORT_TYPE', 'constituency,country,county,iframe,mobile').split(',')
+    if 'constituency' in export_type:
+        process_constituency_data(bucket_name, constituency_filename, constituencies, recall_mapping, is_started, is_running, final_data)
 
-    country_data = process_country_data(bucket_name, country_filename, countries, recall_mapping, is_started, is_running, running_data, final_data)
+    if 'country' in export_type:
+        country_data = process_country_data(bucket_name, country_filename, countries, recall_mapping, is_started, is_running, running_data, final_data)
 
-    process_county_data(bucket_name, county_filename, counties, recall_mapping, is_started, is_running, running_data, final_data)
+    if 'county' in export_type:
+        process_county_data(bucket_name, county_filename, counties, recall_mapping, is_started, is_running, running_data, final_data)
     
-    process_iframe(base_bucket_folder, bucket_name, iframe_filename, countries, recall_mapping, is_started, is_running, running_data, final_data)
+    if 'iframe' in export_type:
+        process_iframe(base_bucket_folder, bucket_name, iframe_filename, countries, recall_mapping, is_started, is_running, running_data, final_data)
     
-    process_mobile(base_bucket_folder, bucket_name, mobile_filename, is_started, is_running, country_data)
+    if 'mobile' in export_type:
+        process_mobile(base_bucket_folder, bucket_name, mobile_filename, is_started, is_running, country_data)
 
 def presindent2024_cec( summary, phase = 1 ):
     tks = []
