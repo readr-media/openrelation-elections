@@ -631,7 +631,8 @@ def process_mobile(base_bucket_folder, bucket_name, filename, is_started, is_run
         'yunlinCounty'
     ]
 
-    base_url = f'https://whoareyou-gcs.readr.tw/{base_bucket_folder}' + '/v2/2025/recall/district/{}.json'
+    recall_folder = os.getenv('RECALL_FOLDER', 'recall-july')
+    base_url = f'https://whoareyou-gcs.readr.tw/{base_bucket_folder}/v2/2025/{recall_folder}/district/{{}}.json'
     for district_file in district_files:
         request_data = requests.get(base_url.format(district_file))
         if request_data.status_code == 200:
@@ -676,7 +677,7 @@ def get_202507_recall_data():
     country_filename = f'{base_bucket_folder}/2025/legislator/map/country/{recall_folder}/country.json'
     county_filename = f'{base_bucket_folder}/2025/legislator/map/county/{recall_folder}/{{}}.json'
     iframe_filename = f'{base_bucket_folder}/2025/legislator/iframe/{recall_folder}/iframe.json'
-    mobile_filename = '/v2/2025/recall/district/{}.json'
+    mobile_filename = f'{base_bucket_folder}/v2/2025/{recall_folder}/district/{{}}.json'
 
     export_type = os.getenv('RECALL_EXPORT_TYPE', 'constituency,country,county,iframe,mobile').split(',')
     if 'constituency' in export_type:
