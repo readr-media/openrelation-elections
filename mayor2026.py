@@ -228,9 +228,12 @@ def mayor2026_realtime():
             if c.get('candVictor'):
                 prev_victor[p['city']] = c['candNo']
 
-    # 抓中選會 + 備份:running 每輪抓;final 只在尚未結束時抓(結束後已 latch,避免每輪下載 ~96MB)
-    running = request_cec('running.json')
-    final = request_cec('final.json') if prev_isRunning is not False else None
+    # 抓中選會 + 備份:running/final 只在尚未結束時抓(結束後已 latch,不再請求,避免每輪下載)
+    if prev_isRunning is not False:
+        running = request_cec('running.json')
+        final = request_cec('final.json')
+    else:
+        running = final = None
     snapshot_cec(running, 'running.json')
     snapshot_cec(final, 'final.json')
     cec_new = bool(running or final)
