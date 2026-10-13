@@ -99,6 +99,17 @@ def validate(city, candidate):
             problems.append(f"{name}({cc}) only {n} candidate(s) (mayor needs at least 2)")
         elif n > 3:
             print(f"[warn] {name}({cc}) has {n} candidates (spec expects 2-3, please check)")
+    # 抽籤後檢查候選人號次,提醒殘留的 "00"(漏填)與同縣市重複號次
+    if any(x['candNo'] != '00' for cs in candidate.values() for x in cs):
+        for c in city:
+            cc, name = c['citycode'], c['city']
+            nos = [x['candNo'] for x in candidate.get(cc, [])]
+            if '00' in nos:
+                print(f"[warn] {name}({cc}) has unfilled candNo '00'")
+            real = [no for no in nos if no != '00']
+            dups = sorted({no for no in real if real.count(no) > 1})
+            if dups:
+                print(f"[warn] {name}({cc}) has duplicate candNo {dups}")
     if problems:
         raise ValueError("roster validation failed, no files written:\n  " + "\n  ".join(problems))
 

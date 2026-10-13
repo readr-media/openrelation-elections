@@ -17,7 +17,7 @@ from tools.cec_data import request_cec
 BUCKET = os.environ['BUCKET']                  # 輸出 bucket
 ENV_FOLDER = os.environ['ENV_FOLDER']          # elections-dev / elections
 
-# 電視 .db:gs://statics-editools-prod/2026/{MMDD}.db(來源公開唯讀)
+# 電視 .db:gs://statics-editools-prod/2026/{MMDD}.db
 TV_DB_BUCKET = 'statics-editools-prod'
 TV_DB_NAME = os.environ.get('TV_DB_NAME', '2026/1128.db')
 
@@ -135,14 +135,16 @@ def read_tv_db():
     try:
         db_path = 'mayor.db'
         download_sqlite_from_gcs(TV_DB_BUCKET, TV_DB_NAME, db_path)
+        generation = None
         try:                                   # 取上傳時間失敗不丟整輪,改用當下時間
             blob = gcs_client().bucket(TV_DB_BUCKET).blob(TV_DB_NAME)
             blob.reload()                      # 只抓 metadata
             db_time = blob.updated.astimezone(TZ)
+            generation = blob.generation
         except Exception as e:
             print(f"[read_tv_db] failed to get .db upload time, using current time: {type(e).__name__}: {e}")
             db_time = datetime.now(TZ)
-        snapshot_tv_db(db_path)                # 固定備份
+        snapshot_tv_db(db_path, generation)    # 同 generation(內容沒變)就不重複備份
         conn = sqlite3.connect(db_path)
         cur = conn.cursor()
         p1 = {}
@@ -173,13 +175,19 @@ def snapshot_cec(data, filename):
         print(f"[snapshot cec] failed: {type(e).__name__}: {e}")
 
 
-def snapshot_tv_db(local_path):
-    '''電視 .db 備份 → statics-editools-prod/2026/backup/{原檔名}-{YYYYMMDD_HHMMSS}.db'''
+def snapshot_tv_db(local_path, generation=None):
+    '''電視 .db 備份 → statics-editools-prod/2026/backup/{原檔名}-{generation}.db;
+    同 generation(內容沒變)已備過就跳過;拿不到 generation 時退回時間戳命名照備.'''
     try:
-        ts = datetime.now(TZ).strftime('%Y%m%d_%H%M%S')
         stem = os.path.splitext(os.path.basename(TV_DB_NAME))[0]   # 2026/1128.db → 1128
-        dest = f'{YEAR}/backup/{stem}-{ts}.db'
-        gcs_client().bucket(TV_DB_BUCKET).blob(dest).upload_from_filename(local_path)
+        if generation is not None:
+            blob = gcs_client().bucket(TV_DB_BUCKET).blob(f'{YEAR}/backup/{stem}-{generation}.db')
+            if blob.exists():                  # 這個版本已備過 → 跳過
+                return
+        else:
+            ts = datetime.now(TZ).strftime('%Y%m%d_%H%M%S')
+            blob = gcs_client().bucket(TV_DB_BUCKET).blob(f'{YEAR}/backup/{stem}-{ts}.db')
+        blob.upload_from_filename(local_path)
     except Exception as e:
         print(f"[snapshot db] failed: {type(e).__name__}: {e}")
 
@@ -241,10 +249,17 @@ def mayor2026_realtime():
     if prev_isRunning is not False:
         running = request_cec('running.json')
         final = request_cec('final.json')
+        snapshot_cec(running, 'running.json')
+        snapshot_cec(final, 'final.json')
+        # 本輪 ST 去重回 None → 讀本機 final.json 快取拿回完整資料,避免結束狀態因上傳失敗而遺失
+        if final is None and os.path.exists('final.json'):
+            try:
+                with open('final.json', encoding='utf-8') as f:
+                    final = json.load(f)
+            except Exception as e:
+                print(f"[mayor2026] failed to read local final.json: {type(e).__name__}: {e}")
     else:
         running = final = None
-    snapshot_cec(running, 'running.json')
-    snapshot_cec(final, 'final.json')
     cec_new = bool(running or final)
 
     # isStarted(時間)/ isRunning(final 出現或上輪已結束 → 永久 false)
