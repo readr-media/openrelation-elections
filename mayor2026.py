@@ -113,13 +113,19 @@ def load_roster():
 
 
 def read_prev():
-    '''讀上一輪輸出當 latch;用 storage client 讀 GCS.取不到回 {}.'''
+    '''讀上一輪輸出當 latch.blob 不存在回 {}(第一輪);讀取/解析失敗回 None(呼叫端跳過本輪,避免 latch 被歸零).'''
     try:
         blob = gcs_client().bucket(BUCKET).get_blob(OUTPUT_PATH)
-        return json.loads(blob.download_as_bytes()) if blob else {}
     except Exception as e:
         print(f"[read_prev] failed to read previous output: {type(e).__name__}: {e}")
+        return None
+    if blob is None:
         return {}
+    try:
+        return json.loads(blob.download_as_bytes())
+    except Exception as e:
+        print(f"[read_prev] failed to parse previous output: {type(e).__name__}: {e}")
+        return None
 
 
 ### ---------- 電視 SQLite ----------
@@ -220,6 +226,9 @@ def mayor2026_realtime():
 
     # 上一輪 JSON(latch:isRunning / source / candVictor) — 先讀,才能決定要不要抓 final
     prev = read_prev()
+    if prev is None:        # 讀取失敗(非不存在) → 跳過本輪,不寫出,避免把 latch 歸零成第一輪
+        print('[mayor2026] cannot read previous output, skip this round')
+        return {}
     prev_isRunning = prev.get('isRunning', True)
     prev_source, prev_victor = {}, {}
     for p in prev.get('polling', []):
@@ -251,19 +260,17 @@ def mayor2026_realtime():
     mapping = load_mapping()
     roster = load_roster()
     p1, p1v, tv_time = read_tv_db()
+    cec_src = final or running
     if not p1 or not p1v:
-        # DB 空也要讓 isRunning=False,否則 final 出現但 DB 為空時 latch 會遺失
-        if not isRunning and prev.get('isRunning') is not False and prev.get('polling'):
-            prev['isRunning'] = False
-            upload_data(BUCKET, json.dumps(prev, ensure_ascii=False).encode('utf8'),
-                        'application/json', OUTPUT_PATH)
-            print('[mayor2026] TV DB empty but final present: set isRunning=False, keep previous data')
+        # 結束後全縣市走中選會、用不到 TV 資料 → 有 CEC 就用空 p1/p1v 往下產出,
+        # 避免 final 首現那輪 TV DB 剛好掛時,final 票數與 '*' 當選一直寫不進去.
+        if not isRunning and cec_src and 'TC' in cec_src:
+            p1, p1v, tv_time = {}, {}, now.strftime('%Y-%m-%d %H:%M:%S')
+        else:
+            print('[mayor2026] TV DB empty/unreadable, skip this round')
             return prev
-        print('[mayor2026] TV DB empty/unreadable, skip this round')
-        return prev
 
     # 中選會票數(縣市總計層)
-    cec_src = final or running
     cec = parse_cec_mayor(cec_src['TC']) if (cec_src and 'TC' in cec_src) else {}
 
     # 逐縣市 source(ems latch;開票前鏡新聞,結束中選會)
