@@ -237,6 +237,12 @@ def mayor2026_realtime():
     if prev is None:        # 讀取失敗(非不存在) → 跳過本輪,不寫出,避免把 latch 歸零成第一輪
         print('[mayor2026] cannot read previous output, skip this round')
         return {}
+    # reset/首輪(iframe 不存在 → prev={}):清掉同一 instance 前一場演練/測試殘留的本機 CEC 快取,
+    # 使之後各輪讀到的本機 final 必為本場資料 → 重置只需刪 GCS 的 iframe.json,不必清本機或重啟.
+    if not prev:
+        for f in ('final.json', 'running.json'):
+            if os.path.exists(f):
+                os.remove(f)
     prev_isRunning = prev.get('isRunning', True)
     prev_source, prev_victor = {}, {}
     for p in prev.get('polling', []):
@@ -251,8 +257,10 @@ def mayor2026_realtime():
         final = request_cec('final.json')
         snapshot_cec(running, 'running.json')
         snapshot_cec(final, 'final.json')
-        # 本輪 ST 去重回 None → 讀本機 final.json 快取拿回完整資料,避免結束狀態因上傳失敗而遺失
-        if final is None and os.path.exists('final.json'):
+        # 結束那輪若上傳 GCS 失敗、下輪 final 又被 ST 去重擋成 None,會遺失結束狀態;
+        # 此時改讀本機 final 快取補回(reset 首輪已清殘留 → 本機 final 必為本場,一存在就採用,final 優先於 running).
+        # 僅 recovery 情境(prev 有 polling=上輪確有輸出)才讀,避免 reset 首輪誤讀.
+        if final is None and prev.get('polling') and os.path.exists('final.json'):
             try:
                 with open('final.json', encoding='utf-8') as f:
                     final = json.load(f)
