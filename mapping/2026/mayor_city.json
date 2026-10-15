@@ -1,0 +1,156 @@
+[
+  {
+    "order": 1,
+    "citycode": "63000",
+    "city": "臺北市",
+    "prvCode": "63",
+    "cityCode": "000"
+  },
+  {
+    "order": 2,
+    "citycode": "65000",
+    "city": "新北市",
+    "prvCode": "65",
+    "cityCode": "000"
+  },
+  {
+    "order": 3,
+    "citycode": "68000",
+    "city": "桃園市",
+    "prvCode": "68",
+    "cityCode": "000"
+  },
+  {
+    "order": 4,
+    "citycode": "66000",
+    "city": "臺中市",
+    "prvCode": "66",
+    "cityCode": "000"
+  },
+  {
+    "order": 5,
+    "citycode": "67000",
+    "city": "臺南市",
+    "prvCode": "67",
+    "cityCode": "000"
+  },
+  {
+    "order": 6,
+    "citycode": "64000",
+    "city": "高雄市",
+    "prvCode": "64",
+    "cityCode": "000"
+  },
+  {
+    "order": 7,
+    "citycode": "10004",
+    "city": "新竹縣",
+    "prvCode": "10",
+    "cityCode": "004"
+  },
+  {
+    "order": 8,
+    "citycode": "10018",
+    "city": "新竹市",
+    "prvCode": "10",
+    "cityCode": "018"
+  },
+  {
+    "order": 9,
+    "citycode": "10007",
+    "city": "彰化縣",
+    "prvCode": "10",
+    "cityCode": "007"
+  },
+  {
+    "order": 10,
+    "citycode": "10017",
+    "city": "基隆市",
+    "prvCode": "10",
+    "cityCode": "017"
+  },
+  {
+    "order": 11,
+    "citycode": "10002",
+    "city": "宜蘭縣",
+    "prvCode": "10",
+    "cityCode": "002"
+  },
+  {
+    "order": 12,
+    "citycode": "10020",
+    "city": "嘉義市",
+    "prvCode": "10",
+    "cityCode": "020"
+  },
+  {
+    "order": 13,
+    "citycode": "10009",
+    "city": "雲林縣",
+    "prvCode": "10",
+    "cityCode": "009"
+  },
+  {
+    "order": 14,
+    "citycode": "10013",
+    "city": "屏東縣",
+    "prvCode": "10",
+    "cityCode": "013"
+  },
+  {
+    "order": 15,
+    "citycode": "10008",
+    "city": "南投縣",
+    "prvCode": "10",
+    "cityCode": "008"
+  },
+  {
+    "order": 16,
+    "citycode": "10005",
+    "city": "苗栗縣",
+    "prvCode": "10",
+    "cityCode": "005"
+  },
+  {
+    "order": 17,
+    "citycode": "10010",
+    "city": "嘉義縣",
+    "prvCode": "10",
+    "cityCode": "010"
+  },
+  {
+    "order": 18,
+    "citycode": "10015",
+    "city": "花蓮縣",
+    "prvCode": "10",
+    "cityCode": "015"
+  },
+  {
+    "order": 19,
+    "citycode": "10014",
+    "city": "臺東縣",
+    "prvCode": "10",
+    "cityCode": "014"
+  },
+  {
+    "order": 20,
+    "citycode": "10016",
+    "city": "澎湖縣",
+    "prvCode": "10",
+    "cityCode": "016"
+  },
+  {
+    "order": 21,
+    "citycode": "09020",
+    "city": "金門縣",
+    "prvCode": "09",
+    "cityCode": "020"
+  },
+  {
+    "order": 22,
+    "citycode": "09007",
+    "city": "連江縣",
+    "prvCode": "09",
+    "cityCode": "007"
+  }
+]
