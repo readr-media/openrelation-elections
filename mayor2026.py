@@ -128,6 +128,15 @@ def read_prev():
         return None
 
 
+def fetch_cec(filename):
+    '''抓中選會檔;任何錯誤(空 body / 非 JSON / 網路)都視為本輪無資料回 None,不讓整輪崩潰.'''
+    try:
+        return request_cec(filename)
+    except Exception as e:
+        print(f"[mayor2026] CEC fetch/parse failed for {filename}: {type(e).__name__}: {e}")
+        return None
+
+
 ### ---------- 電視 SQLite ----------
 def read_tv_db():
     '''下載讀電視 .db → (p1={citycode:{candNo:tks}}, p1v={citycode:{ems,candvictor}}, db_time);
@@ -253,8 +262,8 @@ def mayor2026_realtime():
 
     # 抓中選會 + 備份:running/final 只在尚未結束時抓(結束後已 latch,不再請求,避免每輪下載)
     if prev_isRunning is not False:
-        running = request_cec('running.json')
-        final = request_cec('final.json')
+        running = fetch_cec('running.json')
+        final = fetch_cec('final.json')
         snapshot_cec(running, 'running.json')
         snapshot_cec(final, 'final.json')
         # 結束那輪若上傳 GCS 失敗、下輪 final 又被 ST 去重擋成 None,會遺失結束狀態;
@@ -268,7 +277,6 @@ def mayor2026_realtime():
                 print(f"[mayor2026] failed to read local final.json: {type(e).__name__}: {e}")
     else:
         running = final = None
-    cec_new = bool(running or final)
 
     # isStarted(時間)/ isRunning(final 出現或上輪已結束 → 永久 false)
     try:
@@ -276,6 +284,16 @@ def mayor2026_realtime():
     except ValueError:
         start_dt = datetime(YEAR, 11, 28, 16, 0, 0, tzinfo=TZ)
         print(f"[mayor2026] invalid MAYOR_START_TS ({ELECTION_START!r}), falling back to default {YEAR}-11-28 16:00:00")
+    #「本場開始(start_dt)之後才產出」的 final;開票前殘留的舊/演練 final(ST 比 start 早)視為尚未結束,避免提早結束
+    if final is not None:
+        try:
+            final_dt = datetime.strptime(str(final.get('ST')), '%m%d%H%M%S').replace(year=YEAR, tzinfo=TZ)
+        except (ValueError, TypeError):
+            final_dt = None
+        if final_dt is None or final_dt < start_dt:
+            print(f"[mayor2026] final ST {final.get('ST')!r} < start {ELECTION_START!r}, treat as no final (not ended)")
+            final = None
+    cec_new = bool(running or final)
     isStarted = (now >= start_dt) or prev.get('isStarted', False)
     isRunning = not (prev_isRunning is False or bool(final))
 
