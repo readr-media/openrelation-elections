@@ -792,13 +792,16 @@ def dump_2025_recall_data(bucket_name, filename, data):
     else:
         print(f"Invalid data upload source: {data_upload_source}")
 
-def upload_data(bucket_name: str, data: str, content_type: str, destination_blob_name: str):
+def upload_data(bucket_name: str, data: str, content_type: str, destination_blob_name: str, cache_control: str = 'max-age=30,public'):
     '''Uploads a file to the bucket.'''
     # bucket_name = 'your-bucket-name'
     # data = 'storage-object-content'
     storage_client = storage.Client()
     bucket = storage_client.bucket(bucket_name)
     blob = bucket.blob(destination_blob_name)
+    # Set metadata before the upload: a window without Cache-Control lets GCS cache the object for 1 hour.
+    blob.content_language = 'zh'
+    blob.cache_control = cache_control
     # blob.content_encoding = 'gzip'
     # try:
     #       data=bytes(data, encoding='utf-8'),
@@ -809,9 +812,6 @@ def upload_data(bucket_name: str, data: str, content_type: str, destination_blob
         #data=bytes(data, encoding='utf-8'),
         data,
         content_type=content_type, client=storage_client)
-    blob.content_language = 'zh'
-    blob.cache_control = 'max-age=30,public'
-    blob.patch()
 
 def download_votePop_from_gcs(bucket_name, blob_name, local_path):
     storage_client = storage.Client()

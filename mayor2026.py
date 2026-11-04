@@ -375,8 +375,9 @@ def mayor2026_realtime():
 
     # 上傳(UTF-8 無 BOM);updatedAt 已移入各縣市與 source 同層
     out = {'isStarted': isStarted, 'isRunning': isRunning, 'polling': polling}
+    # no-store keeps GCS from adding its own cache on top of the 5 s CDN TTL for this path.
     upload_data(BUCKET, json.dumps(out, ensure_ascii=False).encode('utf8'),
-                'application/json', OUTPUT_PATH)
+                'application/json', OUTPUT_PATH, cache_control='no-store')
     return out
 
 
