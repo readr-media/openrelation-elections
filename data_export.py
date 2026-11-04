@@ -830,8 +830,10 @@ def upload_votePop_to_gcs(bucket_name, blob_name, local_path):
 def download_sqlite_from_gcs(bucket_name, blob_name, local_path):
     storage_client = storage.Client()
     bucket = storage_client.bucket(bucket_name)
-    blob = bucket.blob(blob_name)
+    # get_blob returns the current generation, so the download skips the cached copy.
+    blob = bucket.get_blob(blob_name)
     blob.download_to_filename(local_path)
+    return blob
 
 if __name__ == "__main__":  
     gql_string = """

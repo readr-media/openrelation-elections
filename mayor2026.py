@@ -143,17 +143,9 @@ def read_tv_db():
     db_time=.db 上傳 GCS 的時間(電視來源 updatedAt 用);失敗回 (None, None, None).'''
     try:
         db_path = 'mayor.db'
-        download_sqlite_from_gcs(TV_DB_BUCKET, TV_DB_NAME, db_path)
-        generation = None
-        try:                                   # 取上傳時間失敗不丟整輪,改用當下時間
-            blob = gcs_client().bucket(TV_DB_BUCKET).blob(TV_DB_NAME)
-            blob.reload()                      # 只抓 metadata
-            db_time = blob.updated.astimezone(TZ)
-            generation = blob.generation
-        except Exception as e:
-            print(f"[read_tv_db] failed to get .db upload time, using current time: {type(e).__name__}: {e}")
-            db_time = datetime.now(TZ)
-        snapshot_tv_db(db_path, generation)    # 同 generation(內容沒變)就不重複備份
+        blob = download_sqlite_from_gcs(TV_DB_BUCKET, TV_DB_NAME, db_path)
+        db_time = blob.updated.astimezone(TZ)  # 內容、上傳時間、備份檔名都取自同一個 generation
+        snapshot_tv_db(db_path, blob.generation)  # 同 generation(內容沒變)就不重複備份
         conn = sqlite3.connect(db_path)
         cur = conn.cursor()
         p1 = {}
