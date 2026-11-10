@@ -1,6 +1,6 @@
 import os
 import googleapiclient
-from flask import Flask, request, json
+from flask import Flask, request, json, jsonify
 from politics_dump import dump_politics, landing
 from datetime import datetime
 from tools.cec_data import request_cec_by_type, request_cec, request_url
@@ -10,6 +10,7 @@ from mayor import gen_mayor, parse_cec_mayor, parse_tv_sht, gen_tv_mayor
 from councilMember import gen_councilMember, parse_cec_council
 from election import factcheck_data, election2024, politics_dump, legislator_dump
 from data_export import president2024_realtime, recall202507_realtime, get_202507_recall_data
+from mayor2026 import mayor2026_realtime
 
 import data_handlers.helpers as hp
 import data_handlers.parser as parser
@@ -18,6 +19,7 @@ import data_handlers.update as gql_update
 from data_handlers import pipeline
 import time
 import copy
+import traceback
 
 app = Flask(__name__)
 
@@ -294,6 +296,20 @@ def dump_landing():
 def recall202507_realtime_endpoint():
     recall202507_realtime()
     return "ok"
+
+@app.route("/mayor2026_realtime", methods=['GET'])
+def mayor2026_realtime_endpoint():
+    try:
+        result = mayor2026_realtime()
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'ok': False, 'error': f'{type(e).__name__}: {e}'}), 500
+    return jsonify({
+        'ok': True,
+        'isStarted': result.get('isStarted'),
+        'isRunning': result.get('isRunning'),
+        'cities': len(result.get('polling', [])),
+    })
 
 @app.route("/recall/202507", methods=['POST'])
 def recall202507():
