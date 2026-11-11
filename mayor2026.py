@@ -207,7 +207,7 @@ def set_victor(candidates, candno):
 def mark_victor(candidates, city, citycode, p1v, cec, region, isRunning, prev_victor):
     '''
     每縣市至多一位:
-      開票中:電視 candvictor=1 → 取最高票,先標先鎖.
+      開票中:不鎖定,每輪完全跟電視 DB candvictor —— =1 標當下最高票,=0 不標(跟著電視改回無當選).
       結束:以中選會 '*' 為準(覆蓋電視);CEC 未給則留上一輪.
     '''
     if not isRunning:                       # 結束:中選會 '*' 為準
@@ -219,10 +219,8 @@ def mark_victor(candidates, city, citycode, p1v, cec, region, isRunning, prev_vi
             set_victor(candidates, prev_victor[city])
         return
 
-    locked = prev_victor.get(city)         # 開票中:先標先鎖
-    if locked:
-        set_victor(candidates, locked)
-        return
+    # 開票中:不鎖定,完全依電視 DB candvictor —— =1 標當下最高票,=0 則不標
+    # (candidates 每輪初始化為 False,未標即等於跟著電視把註記拿掉)
     if str((p1v.get(citycode) or {}).get('candvictor', 0)) == '1':
         winner = highest_tks_candno(candidates)
         if winner:
